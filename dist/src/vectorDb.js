@@ -2,16 +2,16 @@
  * Vector DB simples usando arquivos JSON (sem ChromaDB)
  * Armazena embeddings e documentos em arquivos locais
  */
-import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
-import { cosineSimilarity } from './utils.js';
+import { existsSync } from "fs";
+import { mkdir, readFile, writeFile } from "fs/promises";
+import { join } from "path";
+import { cosineSimilarity } from "./utils.js";
 export class VectorDB {
     collectionName;
     dbPath;
     collectionPath;
     documents;
-    constructor({ collectionName = 'documents', path = './vector_db' } = {}) {
+    constructor({ collectionName = "documents", path = "./vector_db", } = {}) {
         this.collectionName = collectionName;
         this.dbPath = path;
         this.collectionPath = join(this.dbPath, `${collectionName}.json`);
@@ -25,14 +25,14 @@ export class VectorDB {
         // Carregar documentos existentes
         if (existsSync(this.collectionPath)) {
             try {
-                const data = await readFile(this.collectionPath, 'utf-8');
+                const data = await readFile(this.collectionPath, "utf-8");
                 const parsed = JSON.parse(data);
                 this.documents = Array.isArray(parsed) ? parsed : [];
                 console.log(`📂 Carregados ${this.documents.length} documentos do arquivo ${this.collectionPath}`);
             }
             catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                console.warn('Erro ao carregar coleção, iniciando vazia:', errorMessage);
+                console.warn("Erro ao carregar coleção, iniciando vazia:", errorMessage);
                 this.documents = [];
             }
         }
@@ -43,7 +43,7 @@ export class VectorDB {
     }
     async save() {
         console.log(`💾 Salvando ${this.documents.length} documentos em ${this.collectionPath}`);
-        await writeFile(this.collectionPath, JSON.stringify(this.documents, null, 2), 'utf-8');
+        await writeFile(this.collectionPath, JSON.stringify(this.documents, null, 2), "utf-8");
         console.log(`✅ Arquivo salvo com sucesso!`);
     }
     async addDocuments(chunks) {
@@ -52,7 +52,7 @@ export class VectorDB {
             id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
             text: chunk.text,
             embedding: chunk.embedding,
-            metadata: chunk.metadata || {}
+            metadata: chunk.metadata || {},
         }));
         console.log(`💾 Adicionando ${newDocs.length} documentos à coleção (atualmente: ${this.documents.length})`);
         this.documents.push(...newDocs);
@@ -71,7 +71,7 @@ export class VectorDB {
         }
         // Calcular similaridade para cada documento
         const results = this.documents
-            .map(doc => {
+            .map((doc) => {
             // Aplicar filtro se fornecido
             if (filter) {
                 const matches = Object.entries(filter).every(([key, value]) => {
@@ -88,7 +88,7 @@ export class VectorDB {
                 text: doc.text,
                 metadata: doc.metadata,
                 distance: 1 - similarity, // Converter similaridade para distância
-                similarity: similarity
+                similarity: similarity,
             };
         })
             .filter((doc) => doc !== null) // Remover documentos que não passaram no filtro
@@ -102,10 +102,10 @@ export class VectorDB {
             console.warn(`⚠️ Nenhum resultado encontrado! Verificando similaridades...`);
             // Mostrar top 3 similaridades mesmo que baixas
             const allSimilarities = this.documents
-                .map(doc => cosineSimilarity(queryEmbedding, doc.embedding))
+                .map((doc) => cosineSimilarity(queryEmbedding, doc.embedding))
                 .sort((a, b) => b - a)
                 .slice(0, 3);
-            console.log(`📊 Top 3 similaridades (mesmo baixas): ${allSimilarities.map(s => s.toFixed(4)).join(', ')}`);
+            console.log(`📊 Top 3 similaridades (mesmo baixas): ${allSimilarities.map((s) => s.toFixed(4)).join(", ")}`);
         }
         return results;
     }
@@ -113,7 +113,7 @@ export class VectorDB {
         await this.initialize();
         return {
             collectionName: this.collectionName,
-            documentCount: this.documents.length
+            documentCount: this.documents.length,
         };
     }
     async deleteCollection() {

@@ -2,14 +2,14 @@
  * Processador de documentos para Node.js
  * Suporta OCR para PDFs escaneados (gratuito e local)
  */
-import { createCanvas, Image } from 'canvas';
-import { readFile } from 'fs/promises';
-import mammoth from 'mammoth';
-import { extname } from 'path';
-import { PDFParse } from 'pdf-parse';
-import { fromPath } from 'pdf2pic';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { createWorker } from 'tesseract.js';
+import { createCanvas, Image } from "canvas";
+import { readFile } from "fs/promises";
+import mammoth from "mammoth";
+import { extname } from "path";
+import { PDFParse } from "pdf-parse";
+import { fromPath } from "pdf2pic";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import { createWorker } from "tesseract.js";
 export class DocumentProcessor {
     ocrWorker;
     constructor() {
@@ -17,19 +17,19 @@ export class DocumentProcessor {
     }
     async getOCRWorker() {
         if (!this.ocrWorker) {
-            console.log('🔄 Inicializando OCR (Tesseract.js)...');
-            this.ocrWorker = await createWorker('por+eng'); // Português e Inglês
-            console.log('✅ OCR inicializado!');
+            console.log("🔄 Inicializando OCR (Tesseract.js)...");
+            this.ocrWorker = await createWorker("por+eng"); // Português e Inglês
+            console.log("✅ OCR inicializado!");
         }
         return this.ocrWorker;
     }
     async extractTextWithOCR(pdfBuffer) {
-        console.log('🔍 PDF parece ser escaneado, usando OCR (Tesseract.js)...');
+        console.log("🔍 PDF parece ser escaneado, usando OCR (Tesseract.js)...");
         const worker = await this.getOCRWorker();
         try {
             // Tesseract.js não processa PDFs diretamente, precisa converter para imagem
-            console.log('📄 Convertendo PDF para imagens e processando com OCR...');
-            console.log('⏳ Por favor, aguarde (isso pode demorar para arquivos grandes)...');
+            console.log("📄 Convertendo PDF para imagens e processando com OCR...");
+            console.log("⏳ Por favor, aguarde (isso pode demorar para arquivos grandes)...");
             // Obter número de páginas primeiro (nova API do pdf-parse v2)
             const parser = new PDFParse({ data: pdfBuffer });
             const info = await parser.getInfo();
@@ -37,10 +37,10 @@ export class DocumentProcessor {
             console.log(`📖 PDF tem ${numPages} páginas. Processando cada página...`);
             // Tentar usar pdf2pic primeiro (mais rápido se GraphicsMagick estiver instalado)
             let usePdf2Pic = false;
-            const { writeFile, unlink } = await import('fs/promises');
-            const { join } = await import('path');
-            const { tmpdir } = await import('os');
-            const { randomUUID } = await import('crypto');
+            const { writeFile, unlink } = await import("fs/promises");
+            const { join } = await import("path");
+            const { tmpdir } = await import("os");
+            const { randomUUID } = await import("crypto");
             const tempPdfPath = join(tmpdir(), `${randomUUID()}.pdf`);
             await writeFile(tempPdfPath, pdfBuffer);
             try {
@@ -51,14 +51,14 @@ export class DocumentProcessor {
                     savePath: tmpdir(),
                     format: "png",
                     width: 2000,
-                    height: 2000
+                    height: 2000,
                 };
                 const convert = fromPath(tempPdfPath, options);
                 const testResult = await convert(1, { responseType: "buffer" });
                 const result = testResult;
                 if (result && result.buffer && result.buffer.length > 0) {
                     usePdf2Pic = true;
-                    console.log('✅ Usando pdf2pic para conversão (GraphicsMagick detectado)');
+                    console.log("✅ Usando pdf2pic para conversão (GraphicsMagick detectado)");
                 }
             }
             catch (pdf2picError) {
@@ -75,14 +75,16 @@ export class DocumentProcessor {
                     savePath: tmpdir(),
                     format: "png",
                     width: 2000,
-                    height: 2000
+                    height: 2000,
                 });
                 for (let pageNum = 1; pageNum <= numPages; pageNum++) {
                     console.log(`  📄 Processando página ${pageNum}/${numPages} (pdf2pic)...`);
                     try {
-                        const result = await convert(pageNum, { responseType: "buffer" });
+                        const result = (await convert(pageNum, {
+                            responseType: "buffer",
+                        }));
                         if (result && result.buffer && result.buffer.length > 0) {
-                            const { data: { text } } = await worker.recognize(result.buffer);
+                            const { data: { text }, } = await worker.recognize(result.buffer);
                             if (text && text.trim().length > 0) {
                                 allTexts.push(`=== Página ${pageNum} ===\n${text.trim()}`);
                                 console.log(`  ✅ Página ${pageNum}: ${text.length} caracteres extraídos`);
@@ -98,9 +100,9 @@ export class DocumentProcessor {
             }
             else {
                 // Método 2: pdfjs-dist + canvas (fallback, não precisa de dependências externas)
-                console.log('🔄 Usando pdfjs-dist + canvas para renderização...');
+                console.log("🔄 Usando pdfjs-dist + canvas para renderização...");
                 // Configurar Image global para pdfjs
-                if (typeof global !== 'undefined') {
+                if (typeof global !== "undefined") {
                     global.Image = Image;
                 }
                 const uint8Array = new Uint8Array(pdfBuffer);
@@ -109,7 +111,7 @@ export class DocumentProcessor {
                     verbosity: 0,
                     // Desabilitar algumas funcionalidades que podem causar problemas
                     disableAutoFetch: false,
-                    disableStream: false
+                    disableStream: false,
                 });
                 const pdf = await loadingTask.promise;
                 for (let pageNum = 1; pageNum <= numPages; pageNum++) {
@@ -118,14 +120,14 @@ export class DocumentProcessor {
                         const page = await pdf.getPage(pageNum);
                         const viewport = page.getViewport({ scale: 2.0 });
                         const canvas = createCanvas(viewport.width, viewport.height);
-                        const context = canvas.getContext('2d');
+                        const context = canvas.getContext("2d");
                         // Renderizar página (pode falhar se tiver imagens inline problemáticas)
                         try {
                             // Usar type assertion para contornar incompatibilidade de tipos do pdfjs-dist
-                            await (page.render({
+                            await page.render({
                                 canvasContext: context,
-                                viewport: viewport
-                            })).promise;
+                                viewport: viewport,
+                            }).promise;
                         }
                         catch (renderError) {
                             // Se falhar na renderização completa, tentar apenas texto
@@ -135,13 +137,13 @@ export class DocumentProcessor {
                             const textItems = textContent.items
                                 .map((item) => {
                                 // Verificar se é TextItem (tem propriedade str)
-                                if ('str' in item && typeof item.str === 'string') {
+                                if ("str" in item && typeof item.str === "string") {
                                     return item.str;
                                 }
-                                return '';
+                                return "";
                             })
                                 .filter((str) => str.length > 0)
-                                .join(' ');
+                                .join(" ");
                             if (textItems && textItems.trim().length > 0) {
                                 allTexts.push(`=== Página ${pageNum} ===\n${textItems.trim()}`);
                                 console.log(`  ✅ Página ${pageNum}: ${textItems.length} caracteres extraídos (apenas texto)`);
@@ -149,8 +151,8 @@ export class DocumentProcessor {
                             }
                             throw renderError;
                         }
-                        const imageBuffer = canvas.toBuffer('image/png');
-                        const { data: { text } } = await worker.recognize(imageBuffer);
+                        const imageBuffer = canvas.toBuffer("image/png");
+                        const { data: { text }, } = await worker.recognize(imageBuffer);
                         if (text && text.trim().length > 0) {
                             allTexts.push(`=== Página ${pageNum} ===\n${text.trim()}`);
                             console.log(`  ✅ Página ${pageNum}: ${text.length} caracteres extraídos`);
@@ -170,14 +172,14 @@ export class DocumentProcessor {
             catch {
                 // Ignorar erro ao deletar
             }
-            const combinedText = allTexts.join('\n\n');
+            const combinedText = allTexts.join("\n\n");
             if (combinedText && combinedText.trim().length > 0) {
                 console.log(`✅ OCR extraiu ${combinedText.length} caracteres de ${numPages} páginas`);
                 return combinedText.trim();
             }
             else {
                 console.warn(`⚠️ OCR não extraiu texto de nenhuma página`);
-                return '';
+                return "";
             }
         }
         catch (error) {
@@ -187,45 +189,50 @@ export class DocumentProcessor {
             if (errorStack) {
                 console.error(`❌ Stack:`, errorStack);
             }
-            return '';
+            return "";
         }
     }
     async process(filePath) {
         const ext = extname(filePath).toLowerCase();
         const buffer = await readFile(filePath);
-        let text = '';
+        let text = "";
         const metadata = {
             source: filePath,
-            filename: filePath.split('/').pop(),
-            extension: ext
+            filename: filePath.split("/").pop(),
+            extension: ext,
         };
         switch (ext) {
-            case '.pdf':
+            case ".pdf":
                 console.log(`📄 Processando PDF (${(buffer.length / 1024 / 1024).toFixed(2)} MB)...`);
                 // Nova API do pdf-parse v2
                 const parser = new PDFParse({ data: buffer });
                 const textResult = await parser.getText();
                 const info = await parser.getInfo();
                 // Texto principal (getText retorna TextResult com pages e text)
-                text = textResult.text || '';
+                text = textResult.text || "";
                 const initialTextLength = text.length;
                 metadata.pages = info.total;
                 // Converter info.info para PDFInfo (pode conter strings, numbers, booleans)
-                if (info.info && typeof info.info === 'object') {
+                if (info.info && typeof info.info === "object") {
                     const infoObj = {};
                     Object.entries(info.info).forEach(([key, value]) => {
-                        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                        if (typeof value === "string" ||
+                            typeof value === "number" ||
+                            typeof value === "boolean") {
                             infoObj[key] = value;
                         }
                     });
                     metadata.info = infoObj;
                 }
                 // Converter metadata para PDFMetadata
-                if (info.metadata && typeof info.metadata === 'object') {
+                if (info.metadata && typeof info.metadata === "object") {
                     const metaObj = {};
                     const metadataObj = info.metadata;
                     Object.entries(metadataObj).forEach(([key, value]) => {
-                        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || (value && typeof value === 'object')) {
+                        if (typeof value === "string" ||
+                            typeof value === "number" ||
+                            typeof value === "boolean" ||
+                            (value && typeof value === "object")) {
                             metaObj[key] = value;
                         }
                     });
@@ -253,7 +260,7 @@ export class DocumentProcessor {
                             else {
                                 // Combinar ambos para ter mais contexto
                                 console.log(`✅ Combinando texto original (${text.length} chars) com OCR (${ocrText.length} chars)`);
-                                text = text + '\n\n=== Texto adicional do OCR ===\n' + ocrText;
+                                text = text + "\n\n=== Texto adicional do OCR ===\n" + ocrText;
                                 metadata.usedOCR = true;
                             }
                         }
@@ -269,12 +276,12 @@ export class DocumentProcessor {
                     if (info.info) {
                         const infoParts = [];
                         Object.entries(info.info).forEach(([key, value]) => {
-                            if (value && typeof value === 'string' && value.length > 0) {
+                            if (value && typeof value === "string" && value.length > 0) {
                                 infoParts.push(`${key}: ${value}`);
                             }
                         });
                         if (infoParts.length > 0) {
-                            text += '\n\n=== Metadados do PDF ===\n' + infoParts.join('\n');
+                            text += "\n\n=== Metadados do PDF ===\n" + infoParts.join("\n");
                         }
                     }
                 }
@@ -289,7 +296,9 @@ export class DocumentProcessor {
                     numpages: info.total,
                     textLength: text.length,
                     usedOCR: metadata.usedOCR || false,
-                    improvement: text.length > initialTextLength ? `+${text.length - initialTextLength} chars` : 'sem melhoria'
+                    improvement: text.length > initialTextLength
+                        ? `+${text.length - initialTextLength} chars`
+                        : "sem melhoria",
                 });
                 // Limpar recursos
                 await parser.destroy();
@@ -302,14 +311,14 @@ export class DocumentProcessor {
                     console.log(`📝 Primeiros 300 caracteres: ${text.substring(0, 300)}...`);
                 }
                 break;
-            case '.docx':
+            case ".docx":
                 const docxResult = await mammoth.extractRawText({ buffer });
                 text = docxResult.value;
                 break;
-            case '.txt':
-            case '.html':
-            case '.htm':
-                text = buffer.toString('utf-8');
+            case ".txt":
+            case ".html":
+            case ".htm":
+                text = buffer.toString("utf-8");
                 break;
             default:
                 throw new Error(`Formato não suportado: ${ext}`);
@@ -320,13 +329,13 @@ export class DocumentProcessor {
     }
     normalizeText(text) {
         // Remover caracteres de controle
-        text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, '');
+        text = text.replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f]/g, "");
         // Normalizar quebras de linha
-        text = text.replace(/\r\n|\r/g, '\n');
+        text = text.replace(/\r\n|\r/g, "\n");
         // Normalizar espaços múltiplos
-        text = text.replace(/[ \t]+/g, ' ');
+        text = text.replace(/[ \t]+/g, " ");
         // Remover linhas vazias múltiplas
-        text = text.replace(/\n{3,}/g, '\n\n');
+        text = text.replace(/\n{3,}/g, "\n\n");
         return text.trim();
     }
 }

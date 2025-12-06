@@ -182,10 +182,27 @@ function suggestCommitType(analysis) {
     }
   }
 
+  // Traduzir razão para português
+  let translatedReason = reason;
+  if (reason.includes('arquivo(s) modificado(s)')) {
+    translatedReason = `${primaryCount} arquivo(s) modificado(s) indicam "${primaryType}"`;
+  } else if (reason.includes('Todos os arquivos')) {
+    translatedReason = `Todos os arquivos modificados indicam "${primaryType}"`;
+  } else if (reason.includes('Principalmente')) {
+    const secondaryType = sortedTypes[1][0];
+    translatedReason = `Principalmente "${primaryType}" (${primaryCount}), mas também "${secondaryType}" (${sortedTypes[1][1]})`;
+  } else if (reason.includes('novo(s) arquivo(s)')) {
+    translatedReason = `${analysis.added.length} novo(s) arquivo(s) adicionado(s)`;
+  } else if (reason.includes('arquivo(s) removido(s)')) {
+    translatedReason = `${analysis.deleted.length} arquivo(s) removido(s)`;
+  } else if (reason.includes('Nenhuma mudança')) {
+    translatedReason = 'Nenhuma mudança detectada';
+  }
+
   return {
     type: primaryType,
     confidence,
-    reason,
+    reason: translatedReason,
     alternatives: sortedTypes.slice(1, 3).map(([type]) => type),
   };
 }
@@ -232,7 +249,24 @@ function main() {
 
   console.log(`\n${colors.bright}Sugestão:${colors.reset}`);
   const scopeStr = scope ? `(${scope})` : '';
-  console.log(`  ${colors.green}${colors.bright}${suggestion.type}${scopeStr}: ${colors.reset}${suggestion.reason}`);
+
+  // Traduzir tipos para português
+  const typeTranslations = {
+    feat: 'feat',
+    fix: 'fix',
+    docs: 'docs',
+    style: 'style',
+    refactor: 'refactor',
+    perf: 'perf',
+    test: 'test',
+    build: 'build',
+    ci: 'ci',
+    chore: 'chore',
+    revert: 'revert',
+  };
+
+  const translatedType = typeTranslations[suggestion.type] || suggestion.type;
+  console.log(`  ${colors.green}${colors.bright}${translatedType}${scopeStr}: ${colors.reset}${suggestion.reason}`);
 
   if (suggestion.confidence === 'high') {
     console.log(`  ${colors.green}✓${colors.reset} Alta confiança`);

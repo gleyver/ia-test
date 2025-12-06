@@ -3,26 +3,26 @@
  * Contém todas as rotas e lógica do sistema RAG
  * Pode ser usada tanto no servidor Node.js quanto no Azure Functions
  */
-import Busboy from 'busboy';
-import { randomUUID } from 'crypto';
-import { createWriteStream, readFileSync, statSync } from 'fs';
-import { unlink, writeFile } from 'fs/promises';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { Readable } from 'stream';
+import Busboy from "busboy";
+import { randomUUID } from "crypto";
+import { createWriteStream, readFileSync, statSync } from "fs";
+import { unlink, writeFile } from "fs/promises";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { tmpdir } from "os";
+import { join } from "path";
+import { Readable } from "stream";
 // Importar módulos do sistema RAG
-import { TextChunker } from './chunker.js';
-import { DocumentProcessor } from './documentProcessor.js';
-import { EmbeddingGenerator } from './embeddings.js';
-import { ResponseGenerator } from './generator.js';
-import { Retriever } from './retriever.js';
-import { VectorDB } from './vectorDb.js';
+import { TextChunker } from "./chunker.js";
+import { DocumentProcessor } from "./documentProcessor.js";
+import { EmbeddingGenerator } from "./embeddings.js";
+import { ResponseGenerator } from "./generator.js";
+import { Retriever } from "./retriever.js";
+import { VectorDB } from "./vectorDb.js";
 // Criar app Hono
 const app = new Hono();
 // CORS
-app.use('/*', cors());
+app.use("/*", cors());
 // Inicializar componentes do RAG (lazy initialization)
 let documentProcessor = null;
 let chunker = null;
@@ -34,31 +34,31 @@ function initializeRAGComponents() {
     if (!documentProcessor) {
         documentProcessor = new DocumentProcessor();
         chunker = new TextChunker({ chunkSize: 1000, chunkOverlap: 200 });
-        embeddingGenerator = new EmbeddingGenerator({ model: 'Xenova/all-MiniLM-L6-v2' });
-        vectorDb = new VectorDB({ collectionName: 'documents' });
+        embeddingGenerator = new EmbeddingGenerator({ model: "Xenova/all-MiniLM-L6-v2" });
+        vectorDb = new VectorDB({ collectionName: "documents" });
         retriever = new Retriever({ vectorDb, embeddingGenerator });
         responseGenerator = new ResponseGenerator({
-            model: 'llama3.2',
-            ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434'
+            model: "llama3.2",
+            ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
         });
     }
 }
 // ==================== ROTAS API ====================
 // Health check
-app.get('/api/health', (c) => {
-    return c.json({ status: 'ok', message: 'RAG System running' });
+app.get("/api/health", (c) => {
+    return c.json({ status: "ok", message: "RAG System running" });
 });
 // Upload e processar documento
-app.post('/api/documents/upload', async (c) => {
+app.post("/api/documents/upload", async (c) => {
     try {
         initializeRAGComponents();
         if (!documentProcessor || !chunker || !embeddingGenerator || !vectorDb) {
-            throw new Error('Componentes RAG não inicializados');
+            throw new Error("Componentes RAG não inicializados");
         }
         const formData = await c.req.formData();
-        const file = formData.get('file');
+        const file = formData.get("file");
         if (!file || !(file instanceof File)) {
-            return c.json({ error: 'Nenhum arquivo enviado' }, 400);
+            return c.json({ error: "Nenhum arquivo enviado" }, 400);
         }
         // Salvar arquivo temporário
         const tempPath = join(tmpdir(), `${randomUUID()}-${file.name}`);
@@ -79,30 +79,35 @@ app.post('/api/documents/upload', async (c) => {
             success: true,
             filename: file.name,
             chunksCreated: chunks.length,
-            metadata
+            metadata,
         });
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Erro ao processar documento:', error);
+        console.error("Erro ao processar documento:", error);
         return c.json({ error: errorMessage }, 500);
     }
 });
 // Upload + Query em uma única chamada
-app.post('/api/query', async (c) => {
+app.post("/api/query", async (c) => {
     try {
         initializeRAGComponents();
-        if (!documentProcessor || !chunker || !embeddingGenerator || !vectorDb || !retriever || !responseGenerator) {
-            throw new Error('Componentes RAG não inicializados');
+        if (!documentProcessor ||
+            !chunker ||
+            !embeddingGenerator ||
+            !vectorDb ||
+            !retriever ||
+            !responseGenerator) {
+            throw new Error("Componentes RAG não inicializados");
         }
         // Verificar se é multipart/form-data ou JSON
-        const contentType = c.req.header('content-type') || '';
+        const contentType = c.req.header("content-type") || "";
         let file = null;
         let query = null;
         // Tentar detectar o tipo de conteúdo
-        const isMultipart = contentType.includes('multipart/form-data');
-        const isFormUrlEncoded = contentType.includes('application/x-www-form-urlencoded');
-        const isJson = contentType.includes('application/json');
+        const isMultipart = contentType.includes("multipart/form-data");
+        const isFormUrlEncoded = contentType.includes("application/x-www-form-urlencoded");
+        const isJson = contentType.includes("application/json");
         if (isMultipart || isFormUrlEncoded) {
             // Processar form-data usando Busboy (mais confiável que o método nativo)
             try {
@@ -110,7 +115,7 @@ app.post('/api/query', async (c) => {
                 // Busboy precisa dos headers em formato objeto simples (não Headers object)
                 const headers = {};
                 const requestHeaders = rawRequest.headers;
-                if (requestHeaders && typeof requestHeaders.forEach === 'function') {
+                if (requestHeaders && typeof requestHeaders.forEach === "function") {
                     // Se for Headers object (Web API)
                     requestHeaders.forEach((value, key) => {
                         headers[key.toLowerCase()] = value;
@@ -119,7 +124,7 @@ app.post('/api/query', async (c) => {
                 else if (requestHeaders) {
                     // Se já for objeto simples
                     Object.entries(requestHeaders).forEach(([key, value]) => {
-                        if (typeof value === 'string') {
+                        if (typeof value === "string") {
                             headers[key.toLowerCase()] = value;
                         }
                         else if (Array.isArray(value) && value.length > 0) {
@@ -127,16 +132,16 @@ app.post('/api/query', async (c) => {
                         }
                     });
                 }
-                if (!headers['content-type']) {
+                if (!headers["content-type"]) {
                     return c.json({
-                        error: 'Erro ao processar form-data: Missing Content-Type',
-                        hint: 'Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).'
+                        error: "Erro ao processar form-data: Missing Content-Type",
+                        hint: "Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).",
                     }, 400);
                 }
                 // Criar stream a partir do body
                 const bodyStream = rawRequest.body;
                 if (!bodyStream) {
-                    return c.json({ error: 'Body vazio' }, 400);
+                    return c.json({ error: "Body vazio" }, 400);
                 }
                 // Converter ReadableStream para Node.js Readable
                 const nodeStream = bodyStream instanceof Readable
@@ -144,14 +149,14 @@ app.post('/api/query', async (c) => {
                     : Readable.fromWeb(bodyStream);
                 const busboy = Busboy({ headers });
                 await new Promise((resolve, reject) => {
-                    busboy.on('file', (name, fileStream, info) => {
-                        if (name === 'file') {
-                            const filename = info.filename || 'unknown';
-                            const mimeType = info.mimeType || 'application/octet-stream';
+                    busboy.on("file", (name, fileStream, info) => {
+                        if (name === "file") {
+                            const filename = info.filename || "unknown";
+                            const mimeType = info.mimeType || "application/octet-stream";
                             const tempFilePath = join(tmpdir(), `${randomUUID()}-${filename}`);
                             const writeStream = createWriteStream(tempFilePath);
                             fileStream.pipe(writeStream);
-                            writeStream.on('finish', () => {
+                            writeStream.on("finish", () => {
                                 const stats = statSync(tempFilePath);
                                 file = {
                                     name: filename,
@@ -161,19 +166,19 @@ app.post('/api/query', async (c) => {
                                     arrayBuffer: async () => {
                                         const data = readFileSync(tempFilePath);
                                         return data.buffer;
-                                    }
+                                    },
                                 };
                             });
-                            writeStream.on('error', reject);
+                            writeStream.on("error", reject);
                         }
                     });
-                    busboy.on('field', (name, value) => {
-                        if (name === 'query') {
+                    busboy.on("field", (name, value) => {
+                        if (name === "query") {
                             query = value;
                         }
                     });
-                    busboy.on('finish', resolve);
-                    busboy.on('error', reject);
+                    busboy.on("finish", resolve);
+                    busboy.on("error", reject);
                     nodeStream.pipe(busboy);
                 });
             }
@@ -181,17 +186,17 @@ app.post('/api/query', async (c) => {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 return c.json({
                     error: `Erro ao processar form-data: ${errorMessage}`,
-                    hint: 'Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).'
+                    hint: "Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).",
                 }, 400);
             }
         }
         else if (isJson) {
             // Processar JSON
-            const body = await c.req.json();
+            const body = (await c.req.json());
             query = body.query || null;
         }
         else {
-            return c.json({ error: 'Content-Type não suportado. Use multipart/form-data ou application/json' }, 400);
+            return c.json({ error: "Content-Type não suportado. Use multipart/form-data ou application/json" }, 400);
         }
         // Processar arquivo se fornecido
         if (file !== null && file !== undefined) {
@@ -199,7 +204,7 @@ app.post('/api/query', async (c) => {
             // Verificar se é File ou FileLike usando type guards
             let fileLike;
             // Verificar se é File (Web API)
-            if (typeof File !== 'undefined') {
+            if (typeof File !== "undefined") {
                 const fileAsAny = fileInstance;
                 if (fileAsAny instanceof File) {
                     const webFile = fileAsAny;
@@ -207,7 +212,7 @@ app.post('/api/query', async (c) => {
                         name: webFile.name,
                         size: webFile.size,
                         type: webFile.type,
-                        arrayBuffer: () => webFile.arrayBuffer()
+                        arrayBuffer: () => webFile.arrayBuffer(),
                     };
                 }
                 else {
@@ -221,12 +226,12 @@ app.post('/api/query', async (c) => {
             }
             // Validar que tem os dados necessários
             if (fileLike.size > 0 && (fileLike.tempPath || fileLike.name)) {
-                console.log(`📄 Processando arquivo: ${fileLike.name || 'desconhecido'}`);
+                console.log(`📄 Processando arquivo: ${fileLike.name || "desconhecido"}`);
                 // Usar caminho temporário se já existir (do Busboy), senão criar
-                let tempPath = fileLike.tempPath || '';
+                let tempPath = fileLike.tempPath || "";
                 if (!tempPath) {
                     // Salvar arquivo temporário (método tradicional - quando não usa Busboy)
-                    tempPath = join(tmpdir(), `${randomUUID()}-${fileLike.name || 'file'}`);
+                    tempPath = join(tmpdir(), `${randomUUID()}-${fileLike.name || "file"}`);
                     const arrayBuffer = await fileLike.arrayBuffer();
                     const buffer = Buffer.from(arrayBuffer);
                     await writeFile(tempPath, buffer);
@@ -249,7 +254,7 @@ app.post('/api/query', async (c) => {
                 }
                 catch (error) {
                     const errorMessage = error instanceof Error ? error.message : String(error);
-                    console.error('Erro ao processar documento:', errorMessage);
+                    console.error("Erro ao processar documento:", errorMessage);
                     // Continuar mesmo se houver erro no processamento do arquivo
                 }
                 finally {
@@ -274,21 +279,25 @@ app.post('/api/query', async (c) => {
             }
         }
         // Validar query
-        if (!query || typeof query !== 'string' || query.trim().length === 0) {
-            return c.json({ error: 'Query é obrigatória' }, 400);
+        if (!query || typeof query !== "string" || query.trim().length === 0) {
+            return c.json({ error: "Query é obrigatória" }, 400);
         }
         // Buscar documentos relevantes
         const retrievedDocs = await retriever.retrieve(query, { topK: 10 });
         if (retrievedDocs.length === 0) {
             return c.json({
                 success: true,
-                response: 'Não encontrei informações relevantes no contexto fornecido para responder sua pergunta.',
+                response: "Não encontrei informações relevantes no contexto fornecido para responder sua pergunta.",
                 sources: [],
                 metadata: {
-                    model: 'llama3.2',
-                    numSources: 0
+                    model: "llama3.2",
+                    numSources: 0,
                 },
-                fileProcessed: file ? (typeof File !== 'undefined' && file instanceof File ? file.name : file.name || null) : null
+                fileProcessed: file
+                    ? typeof File !== "undefined" && file instanceof File
+                        ? file.name
+                        : file.name || null
+                    : null,
             });
         }
         // Gerar resposta
@@ -298,24 +307,28 @@ app.post('/api/query', async (c) => {
             response: result.response,
             sources: result.sources,
             metadata: {
-                model: 'llama3.2',
-                numSources: result.sources.length
+                model: "llama3.2",
+                numSources: result.sources.length,
             },
-            fileProcessed: file ? (typeof File !== 'undefined' && file instanceof File ? file.name : file.name || null) : null
+            fileProcessed: file
+                ? typeof File !== "undefined" && file instanceof File
+                    ? file.name
+                    : file.name || null
+                : null,
         });
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error('Erro na query:', error);
+        console.error("Erro na query:", error);
         return c.json({ error: errorMessage }, 500);
     }
 });
 // Informações da coleção
-app.get('/api/collection/info', async (c) => {
+app.get("/api/collection/info", async (c) => {
     try {
         initializeRAGComponents();
         if (!vectorDb) {
-            throw new Error('VectorDB não inicializado');
+            throw new Error("VectorDB não inicializado");
         }
         const info = await vectorDb.getCollectionInfo();
         return c.json(info);
@@ -326,14 +339,14 @@ app.get('/api/collection/info', async (c) => {
     }
 });
 // Limpar coleção
-app.delete('/api/collection', async (c) => {
+app.delete("/api/collection", async (c) => {
     try {
         initializeRAGComponents();
         if (!vectorDb) {
-            throw new Error('VectorDB não inicializado');
+            throw new Error("VectorDB não inicializado");
         }
         await vectorDb.deleteCollection();
-        return c.json({ success: true, message: 'Coleção limpa' });
+        return c.json({ success: true, message: "Coleção limpa" });
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

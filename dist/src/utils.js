@@ -6,7 +6,7 @@
  */
 export function cosineSimilarity(vecA, vecB) {
     if (vecA.length !== vecB.length) {
-        throw new Error('Vetores devem ter o mesmo tamanho');
+        throw new Error("Vetores devem ter o mesmo tamanho");
     }
     let dotProduct = 0;
     let normA = 0;
@@ -27,7 +27,7 @@ export function cosineSimilarity(vecA, vecB) {
  */
 export function euclideanDistance(vecA, vecB) {
     if (vecA.length !== vecB.length) {
-        throw new Error('Vetores devem ter o mesmo tamanho');
+        throw new Error("Vetores devem ter o mesmo tamanho");
     }
     let sum = 0;
     for (let i = 0; i < vecA.length; i++) {

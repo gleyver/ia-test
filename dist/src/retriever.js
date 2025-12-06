@@ -4,7 +4,7 @@
 export class Retriever {
     vectorDb;
     embeddingGenerator;
-    constructor({ vectorDb, embeddingGenerator }) {
+    constructor({ vectorDb, embeddingGenerator, }) {
         this.vectorDb = vectorDb;
         this.embeddingGenerator = embeddingGenerator;
     }
@@ -16,7 +16,7 @@ export class Retriever {
         // Buscar na Vector DB (aumentar topK para pegar mais contexto)
         const results = await this.vectorDb.search(queryEmbedding, { topK, filter });
         if (results.length > 0) {
-            console.log(`📊 Similaridades encontradas: ${results.map(r => r.similarity.toFixed(3)).join(', ')}`);
+            console.log(`📊 Similaridades encontradas: ${results.map((r) => r.similarity.toFixed(3)).join(", ")}`);
             console.log(`📄 Primeiros 3 resultados:`);
             results.slice(0, 3).forEach((r, i) => {
                 console.log(`  ${i + 1}. Similaridade: ${r.similarity.toFixed(3)} | Texto: ${r.text.substring(0, 150)}...`);

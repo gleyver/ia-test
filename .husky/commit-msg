@@ -2,5 +2,6 @@
 . "$(dirname -- "$0")/_/husky.sh"
 
 # Validar formato do commit (Conventional Commits)
+echo "📝 Validando formato do commit..."
 npx --no -- commitlint --edit ${1}
 

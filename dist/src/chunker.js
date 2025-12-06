@@ -4,7 +4,7 @@
 export class TextChunker {
     chunkSize;
     chunkOverlap;
-    constructor({ chunkSize = 1000, chunkOverlap = 200 } = {}) {
+    constructor({ chunkSize = 1000, chunkOverlap = 200, } = {}) {
         this.chunkSize = chunkSize;
         this.chunkOverlap = chunkOverlap;
     }
@@ -19,7 +19,7 @@ export class TextChunker {
         const textLength = text.length;
         let start = 0;
         while (start < textLength) {
-            let end = start + (this.chunkSize * 4);
+            const end = start + this.chunkSize * 4;
             if (end >= textLength) {
                 const chunk = text.slice(start).trim();
                 if (chunk) {
@@ -28,20 +28,20 @@ export class TextChunker {
                         metadata: {
                             ...metadata,
                             chunkIndex: chunks.length,
-                            tokens: this.countTokens(chunk)
-                        }
+                            tokens: this.countTokens(chunk),
+                        },
                     });
                 }
                 break;
             }
             // Ajustar fim para não cortar palavras
             const adjustPositions = [
-                text.lastIndexOf('\n\n', end),
-                text.lastIndexOf('\n', end),
-                text.lastIndexOf('. ', end),
-                text.lastIndexOf(' ', end)
+                text.lastIndexOf("\n\n", end),
+                text.lastIndexOf("\n", end),
+                text.lastIndexOf(". ", end),
+                text.lastIndexOf(" ", end),
             ];
-            const bestPos = Math.max(...adjustPositions.filter(pos => pos > start), end);
+            const bestPos = Math.max(...adjustPositions.filter((pos) => pos > start), end);
             const chunk = text.slice(start, bestPos).trim();
             if (chunk) {
                 chunks.push({
@@ -49,16 +49,16 @@ export class TextChunker {
                     metadata: {
                         ...metadata,
                         chunkIndex: chunks.length,
-                        tokens: this.countTokens(chunk)
-                    }
+                        tokens: this.countTokens(chunk),
+                    },
                 });
             }
             // Mover start considerando overlap
-            const overlapStart = bestPos - (this.chunkOverlap * 4);
+            const overlapStart = bestPos - this.chunkOverlap * 4;
             start = overlapStart > start ? overlapStart : bestPos;
         }
         // Adicionar total_chunks
-        chunks.forEach(chunk => {
+        chunks.forEach((chunk) => {
             chunk.metadata.totalChunks = chunks.length;
         });
         return chunks;

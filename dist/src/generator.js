@@ -4,18 +4,20 @@
 export class ResponseGenerator {
     model;
     ollamaUrl;
-    constructor({ model = 'llama3.2', ollamaUrl = 'http://localhost:11434' } = {}) {
+    constructor({ model = "llama3.2", ollamaUrl = "http://localhost:11434", } = {}) {
         this.model = model;
         this.ollamaUrl = ollamaUrl;
     }
     buildContext(retrievedDocs) {
         if (!retrievedDocs || retrievedDocs.length === 0) {
-            return 'Nenhum contexto relevante encontrado.';
+            return "Nenhum contexto relevante encontrado.";
         }
-        return retrievedDocs.map((doc, i) => {
-            const source = doc.metadata?.source || 'Desconhecido';
+        return retrievedDocs
+            .map((doc, i) => {
+            const source = doc.metadata?.source || "Desconhecido";
             return `[Documento ${i + 1} - Fonte: ${source}]\n${doc.text}\n`;
-        }).join('\n---\n\n');
+        })
+            .join("\n---\n\n");
     }
     buildPrompt(query, context, systemMessage = null) {
         if (!systemMessage) {
@@ -47,28 +49,30 @@ RESPOSTA:`;
         const prompt = this.buildPrompt(query, context, systemMessage);
         // Chamar Ollama API
         const response = await fetch(`${this.ollamaUrl}/api/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 model: this.model,
                 prompt: prompt,
-                stream: false
-            })
+                stream: false,
+            }),
         });
         if (!response.ok) {
             throw new Error(`Erro ao gerar resposta: ${response.statusText}`);
         }
-        const result = await response.json();
-        const answer = result.response || '';
+        const result = (await response.json());
+        const answer = result.response || "";
         // Extrair fontes
-        const sources = [...new Set(retrievedDocs.map(doc => doc.metadata?.source || 'Desconhecido'))];
+        const sources = [
+            ...new Set(retrievedDocs.map((doc) => doc.metadata?.source || "Desconhecido")),
+        ];
         return {
             response: answer,
             sources,
             metadata: {
                 model: this.model,
-                numSources: retrievedDocs.length
-            }
+                numSources: retrievedDocs.length,
+            },
         };
     }
 }
