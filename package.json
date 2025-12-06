@@ -1,0 +1,80 @@
+{
+  "name": "rag-system-nodejs",
+  "version": "1.0.0",
+  "description": "Sistema RAG usando Node.js e Hono.js",
+  "main": "server.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts",
+    "build:azure": "tsc && npm run copy:azure",
+    "copy:azure": "rm -rf azure/src && cp -r dist/src azure/",
+    "azure:deploy": "cd azure && func azure functionapp publish <SEU_APP_NAME>",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "lint": "eslint '**/*.ts' --ignore-pattern 'dist/**' --ignore-pattern 'azure/**'",
+    "lint:fix": "eslint . --ext .ts --fix",
+    "format": "prettier --write \"**/*.{ts,json,md}\"",
+    "prepare": "husky",
+    "commit": "cz",
+    "suggest": "node scripts/suggest-commit.js"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "keywords": [
+    "rag",
+    "hono",
+    "nodejs",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@xenova/transformers": "^2.17.2",
+    "busboy": "^1.6.0",
+    "canvas": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.7",
+    "mammoth": "^1.11.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^2.4.5",
+    "pdf2pic": "^3.2.0",
+    "pdfjs-dist": "^5.4.449",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
+    "@eslint/js": "^9.39.1",
+    "@types/busboy": "^1.5.4",
+    "@types/node": "^24.10.1",
+    "@types/pdf-parse": "^1.1.5",
+    "@typescript-eslint/eslint-plugin": "^8.48.1",
+    "@typescript-eslint/parser": "^8.48.1",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.1"
+  }
+}

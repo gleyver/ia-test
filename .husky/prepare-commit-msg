@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Se o commit já tem mensagem (via -m ou -F), não fazer nada
+if [ -n "$2" ]; then
+  exit 0
+fi
+
+# Mostrar sugestão de commit baseado nos arquivos modificados
+node scripts/suggest-commit.js
+
+# Se não tem mensagem, usar commitizen (interface interativa)
+exec < /dev/tty
+npx --no -- cz --hook || true
+

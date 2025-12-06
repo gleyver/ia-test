@@ -1,0 +1,42 @@
+# Ambiente
+.env
+
+# Vector DB
+vector_db/
+chroma_db/
+*.db
+*.index
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Documentos processados (opcional)
+processed_docs/
+temp/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.pnpm-debug.log*
+
+# Modelos baixados
+models/
+.cache/
+
+# Tesseract.js traineddata (modelos de idioma OCR)
+*.traineddata
+tessdata/
+
+# Husky
+.husky/_/

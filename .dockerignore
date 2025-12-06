@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.env
+*.log
+vector_db
+*.traineddata
+tessdata
+.DS_Store
+.vscode
+.idea
+azure
+*.md
+!README.md
+

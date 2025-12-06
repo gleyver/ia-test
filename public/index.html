@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG System - Node.js</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #ffffff;
+            color: #000000;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .container {
+            background: #ffffff;
+        }
+
+        h1 {
+            margin-bottom: 2rem;
+            color: #28a745;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 1rem 2rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 1rem;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #28a745;
+            border-bottom-color: #28a745;
+            font-weight: bold;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .upload-area {
+            border: 2px dashed #28a745;
+            border-radius: 0.5rem;
+            padding: 3rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            background: #f8f9fa;
+        }
+
+        input[type="file"] {
+            margin: 1rem 0;
+        }
+
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #218838;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .query-input {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .query-input:focus {
+            outline: none;
+            border-color: #28a745;
+        }
+
+        .resposta-box {
+            background: #ffffff;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            border: 2px solid #28a745;
+            color: #000000;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-top: 1rem;
+            white-space: pre-wrap;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏠 Sistema RAG Local</h1>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('documentos')">📄 Documentos</button>
+            <button class="tab" onclick="switchTab('consultas')">💬 Consultas</button>
+        </div>
+
+        <!-- Aba Documentos -->
+        <div id="documentos" class="tab-content active">
+            <div class="upload-area">
+                <h3>Upload de Documentos</h3>
+                <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.html" multiple>
+                <br>
+                <button onclick="processarDocumentos()">Processar</button>
+            </div>
+            <div id="documentos-resultado"></div>
+        </div>
+
+        <!-- Aba Consultas -->
+        <div id="consultas" class="tab-content">
+            <input type="text" class="query-input" id="queryInput" placeholder="Digite sua pergunta aqui...">
+            <button onclick="fazerQuery()" style="width: 100%;">Buscar</button>
+            <div id="consultas-resultado"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+
+        function switchTab(tabName) {
+            // Esconder todas as abas
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Mostrar aba selecionada
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        async function processarDocumentos() {
+            const fileInput = document.getElementById('fileInput');
+            const files = fileInput.files;
+
+            if (files.length === 0) {
+                alert('Selecione pelo menos um arquivo');
+                return;
+            }
+
+            const resultadoDiv = document.getElementById('documentos-resultado');
+            resultadoDiv.innerHTML = '<div class="loading">Processando...</div>';
+
+            try {
+                for (const file of files) {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    const response = await fetch(`${API_URL}/documents/upload`, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                        resultadoDiv.innerHTML += `
+                            <div class="success">
+                                ✅ ${data.filename} - ${data.chunksCreated} chunks criados
+                            </div>
+                        `;
+                    } else {
+                        resultadoDiv.innerHTML += `
+                            <div class="error">
+                                ❌ ${file.name}: ${data.error}
+                            </div>
+                        `;
+                    }
+                }
+            } catch (error) {
+                resultadoDiv.innerHTML = `<div class="error">Erro: ${error.message}</div>`;
+            }
+        }
+
+        async function fazerQuery() {
+            const query = document.getElementById('queryInput').value.trim();
+            const resultadoDiv = document.getElementById('consultas-resultado');
+
+            if (!query) {
+                alert('Digite uma pergunta');
+                return;
+            }
+
+            resultadoDiv.innerHTML = '<div class="loading">Buscando...</div>';
+
+            try {
+                const response = await fetch(`${API_URL}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultadoDiv.innerHTML = `
+                        <div class="resposta-box">${data.response}</div>
+                    `;
+                } else {
+                    resultadoDiv.innerHTML = `<div class="error">Erro: ${data.error}</div>`;
+                }
+            } catch (error) {
+                resultadoDiv.innerHTML = `<div class="error">Erro: ${error.message}</div>`;
+            }
+        }
+
+        // Permitir buscar com Enter
+        document.getElementById('queryInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                fazerQuery();
+            }
+        });
+    </script>
+</body>
+</html>
+

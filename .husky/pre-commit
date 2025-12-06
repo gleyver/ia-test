@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Executar lint-staged (valida lint e formatação apenas nos arquivos staged)
+npx lint-staged
+
+# Validar build
+npm run build

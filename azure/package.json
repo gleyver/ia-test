@@ -1,0 +1,33 @@
+{
+  "name": "rag-system-azure",
+  "version": "1.0.0",
+  "description": "Sistema RAG usando Hono.js no Azure Functions",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "func start",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "@marplex/hono-azurefunc-adapter": "^1.0.0",
+    "@xenova/transformers": "^2.17.2",
+    "busboy": "^1.6.0",
+    "canvas": "^3.2.0",
+    "dotenv": "^17.2.3",
+    "hono": "^4.10.7",
+    "mammoth": "^1.11.0",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^2.4.5",
+    "pdf2pic": "^3.2.0",
+    "pdfjs-dist": "^5.4.449",
+    "tesseract.js": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/node": "^24.10.1",
+    "@types/pdf-parse": "^1.1.5",
+    "azure-functions-core-tools": "^4.0.0",
+    "typescript": "^5.9.3"
+  }
+}

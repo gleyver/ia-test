@@ -1,0 +1,193 @@
+{
+  "info": {
+    "_postman_id": "rag-system-api",
+    "name": "RAG System API",
+    "description": "Collection para testar o sistema RAG (Retrieval-Augmented Generation) - API completa com upload e query unificados",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "health"]
+        },
+        "description": "Verifica se a API está funcionando"
+      },
+      "response": []
+    },
+    {
+      "name": "Query - Upload + Pergunta (Tudo em Um)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Arquivo PDF, DOCX, TXT ou HTML (opcional - pode fazer query sem upload)"
+            },
+            {
+              "key": "query",
+              "value": "Qual é o conteúdo do documento?",
+              "type": "text",
+              "description": "Sua pergunta sobre o documento (obrigatório)"
+            }
+          ],
+          "options": {
+            "formdata": {}
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/query",
+          "host": ["{{base_url}}"],
+          "path": ["api", "query"]
+        },
+        "description": "⭐ ENDPOINT PRINCIPAL: Faz upload de documento (opcional) + pergunta em uma única chamada.\n\n✅ CONFIGURAÇÃO CORRETA:\n- Body deve estar em 'form-data' (NÃO raw)\n- Campo 'file': tipo File (selecionar arquivo)\n- Campo 'query': tipo Text (digitar pergunta)\n- NÃO definir Content-Type manualmente (Postman faz automaticamente)\n\nSe enviar arquivo, ele será processado e indexado antes de responder a query.\nSe não enviar arquivo, usa documentos já indexados."
+      },
+      "response": []
+    },
+    {
+      "name": "Query - Apenas Pergunta (JSON)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Qual é o conteúdo do documento?\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/query",
+          "host": ["{{base_url}}"],
+          "path": ["api", "query"]
+        },
+        "description": "Faz uma pergunta sobre documentos já indexados usando formato JSON (sem fazer upload de arquivo).\n\n✅ Use este endpoint quando:\n- Já fez upload de documentos anteriormente\n- Quer fazer múltiplas perguntas sobre os mesmos documentos\n- Não precisa enviar arquivo"
+      },
+      "response": []
+    },
+    {
+      "name": "Query - Apenas Pergunta (Form-Data)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "query",
+              "value": "Qual é o conteúdo do documento?",
+              "type": "text",
+              "description": "Sua pergunta sobre documentos já indexados"
+            }
+          ],
+          "options": {
+            "formdata": {}
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/query",
+          "host": ["{{base_url}}"],
+          "path": ["api", "query"]
+        },
+        "description": "Faz uma pergunta sobre documentos já indexados usando form-data (sem fazer upload de arquivo).\n\n✅ Use este endpoint quando:\n- Já fez upload de documentos anteriormente\n- Prefere usar form-data ao invés de JSON"
+      },
+      "response": []
+    },
+    {
+      "name": "Upload Documento (Separado)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Arquivo PDF, DOCX, TXT ou HTML para processar"
+            }
+          ],
+          "options": {
+            "formdata": {}
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/documents/upload",
+          "host": ["{{base_url}}"],
+          "path": ["api", "documents", "upload"]
+        },
+        "description": "Faz upload e processa um documento separadamente (sem fazer query).\n\n✅ Use este endpoint quando:\n- Quer indexar múltiplos documentos antes de fazer queries\n- Quer apenas adicionar documentos ao banco de dados\n- Não precisa fazer query imediatamente"
+      },
+      "response": []
+    },
+    {
+      "name": "Info da Coleção",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/collection/info",
+          "host": ["{{base_url}}"],
+          "path": ["api", "collection", "info"]
+        },
+        "description": "Retorna informações sobre a coleção (nome e quantidade de documentos indexados).\n\nUse para verificar quantos documentos foram indexados antes de fazer queries."
+      },
+      "response": []
+    },
+    {
+      "name": "Limpar Coleção",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/collection",
+          "host": ["{{base_url}}"],
+          "path": ["api", "collection"]
+        },
+        "description": "Remove todos os documentos da coleção (limpa o banco de dados de vetores).\n\n⚠️ ATENÇÃO: Esta ação não pode ser desfeita! Todos os documentos indexados serão removidos."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "URL base da API. Altere se o servidor estiver rodando em outra porta ou host."
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Garantir que não há Content-Type manual para form-data",
+          "if (pm.request.body && pm.request.body.mode === 'formdata') {",
+          "    pm.request.headers.remove('Content-Type');",
+          "}"
+        ]
+      }
+    }
+  ]
+}
