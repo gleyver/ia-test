@@ -22,11 +22,25 @@ Este sistema permite:
 - **Ollama**: LLM local (gratuito)
 - **Tesseract.js**: OCR para PDFs escaneados
 - **TypeScript**: Tipagem estrita
+- **Inversify**: Dependency Injection
+- **Redis**: Cache distribuído e rate limiting
+- **Prometheus**: Métricas e monitoramento
+- **Pino**: Logging estruturado
+- **Zod**: Validação de configuração
 - **Husky**: Git hooks para validação automática
+- **K6**: Testes de carga e performance
 
 ## 📦 Como Baixar e Instalar
 
 ### 1. Pré-requisitos
+
+**Opção A: Usar Docker (Recomendado - Mais fácil)**
+
+- **Docker** instalado
+- **Docker Compose** instalado
+- **Git** (opcional, para versionamento)
+
+**Opção B: Instalação Local**
 
 - **Node.js** 20+ instalado
 - **Ollama** instalado e rodando
@@ -49,6 +63,8 @@ npm install
 ```
 
 ### 4. Instalar e configurar Ollama
+
+> **💡 Dica:** Se você vai usar Docker (veja seção "🚀 Como Rodar - Opção 1"), pode pular esta etapa! O Docker já inclui o Ollama.
 
 **macOS:**
 
@@ -82,39 +98,128 @@ OLLAMA_URL=http://localhost:11434
 
 ## 🚀 Como Rodar
 
-### Desenvolvimento (com auto-reload):
+### Opção 1: Docker (Recomendado - Não precisa instalar Ollama localmente) 🐳
+
+Se você **não tem o Ollama instalado** na sua máquina, use Docker! É a forma mais fácil de começar:
+
+#### Pré-requisitos:
+
+- **Docker** instalado
+- **Docker Compose** instalado
+
+#### Passos:
+
+1. **Baixar modelo LLM (primeira vez apenas):**
+
+   ```bash
+   # Iniciar apenas o Ollama primeiro
+   docker-compose up -d ollama
+
+   # Aguardar Ollama iniciar (30 segundos)
+   sleep 30
+
+   # Baixar modelo
+   docker exec -it ia-ollama-1 ollama pull llama3.2
+   ```
+
+2. **Iniciar todos os serviços:**
+
+   ```bash
+   docker-compose up -d
+   ```
+
+3. **Verificar se está rodando:**
+
+   ```bash
+   # Ver logs
+   docker-compose logs -f
+
+   # Ou testar a API
+   curl http://localhost:3000/api/health
+   ```
+
+4. **Parar serviços:**
+
+   ```bash
+   docker-compose down
+   ```
+
+**Vantagens:**
+
+- ✅ Não precisa instalar Ollama na sua máquina
+- ✅ Não precisa instalar Node.js (se não quiser)
+- ✅ Isolamento completo de dependências
+- ✅ Fácil de limpar e recomeçar
+
+**O servidor estará disponível em:** `http://localhost:3000`
+
+> ⚠️ **Atenção:** Se você já tiver o servidor rodando localmente (Opção 2) na porta 3000, pare-o antes de iniciar o Docker, ou mude a porta no `docker-compose.yml` (ex: `"3001:3000"`).
+>
+> **Nota sobre portas:**
+>
+> - **Porta 3000/3001**: API RAG (servidor principal)
+> - **Porta 11434**: Ollama (sempre essa porta, não muda)
+> - Dentro do Docker, os containers se comunicam automaticamente via `http://ollama:11434` (não precisa ajustar nada)
+
+---
+
+### Opção 2: Localmente (requer Ollama instalado)
+
+Se você já tem o Ollama instalado na sua máquina:
+
+#### Desenvolvimento (com auto-reload):
 
 ```bash
 npm run dev
 ```
 
-### Produção:
+#### Produção:
 
 ```bash
 npm start
 ```
 
-### Ou compilar e rodar:
+#### Ou compilar e rodar:
 
 ```bash
 npm run build
 node dist/server.js
 ```
 
-O servidor estará disponível em: `http://localhost:3000`
+**O servidor estará disponível em:** `http://localhost:3000`
+
+> ⚠️ **Atenção:** Se você tiver o Docker rodando na porta 3000, pare-o antes (`docker-compose down`) ou mude a porta no `.env` (ex: `PORT=3001`).
+
+**Nota:** Para esta opção, você precisa ter o Ollama instalado e rodando. Veja a seção "📦 Como Baixar e Instalar" acima para instruções de instalação do Ollama.
 
 ## 📡 API Endpoints
 
 ### `GET /api/health`
 
-Health check do sistema.
+Health check do sistema com status de dependências.
 
 **Resposta:**
 
 ```json
 {
   "status": "ok",
-  "message": "RAG System running"
+  "timestamp": "2024-12-08T15:00:00.000Z",
+  "uptime": 3600,
+  "dependencies": {
+    "ollama": { "status": "ok" },
+    "vectorDb": { "status": "ok" },
+    "redis": { "status": "ok", "message": "Redis desabilitado (usando memória)" },
+    "circuitBreaker": {
+      "state": "CLOSED",
+      "stats": {
+        "failures": 0,
+        "successes": 10,
+        "lastFailureTime": null,
+        "state": "CLOSED"
+      }
+    }
+  },
+  "memory": { ... }
 }
 ```
 
@@ -184,232 +289,279 @@ Informações sobre a coleção de documentos indexados.
 
 ### `DELETE /api/collection`
 
-Limpa toda a coleção de documentos.
+Limpa manualmente todas as sessões expiradas.
 
 **Resposta:**
 
 ```json
 {
   "success": true,
-  "message": "Coleção limpa"
+  "message": "Limpeza manual executada.",
+  "stats": {
+    "sessionsChecked": 10,
+    "sessionsDeleted": 5,
+    "sizeFreedMB": "2.45",
+    "errors": []
+  }
 }
 ```
 
+### `POST /api/circuit-breaker/reset`
+
+Reseta o Circuit Breaker (útil quando está aberto).
+
+**Resposta:**
+
+```json
+{
+  "success": true,
+  "message": "Circuit Breaker resetado com sucesso",
+  "state": "CLOSED"
+}
+```
+
+## 🏗️ Arquitetura
+
+O projeto segue **Clean Architecture** com separação clara de responsabilidades e aplicação de princípios SOLID, Design Patterns e boas práticas de desenvolvimento.
+
+### Camadas da Arquitetura
+
+1. **Domain (Domínio)** - Regras de negócio puras
+   - Independente de frameworks e bibliotecas externas
+   - Contém: Entidades, Interfaces, Value Objects, Use Cases, Serviços de Domínio
+
+2. **Infrastructure (Infraestrutura)** - Implementações concretas
+   - Integrações com serviços externos (Ollama, Redis, etc.)
+   - Detalhes técnicos (OCR, processamento de arquivos, etc.)
+   - Implementa interfaces definidas no domínio
+
+3. **Presentation (Apresentação)** - Interface HTTP
+   - Rotas e endpoints da API
+   - Parsers e Adapters para requisições
+   - Orquestração de fluxos de requisição
+
+4. **Services (Serviços)** - Orquestração
+   - Coordenam múltiplas operações
+   - Utilizam casos de uso do domínio
+
+### Princípios e Padrões Aplicados
+
+- ✅ **SOLID**: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
+- ✅ **Design Patterns**: Strategy, Repository, Factory, Adapter, Decorator, Circuit Breaker, Singleton
+- ✅ **Dependency Injection**: Inversify para gerenciamento de dependências
+- ✅ **Value Objects**: Imutabilidade e validação (DocumentId, SessionId, Query, FileSize)
+- ✅ **Use Cases**: Encapsulamento de lógica de negócio
+- ✅ **Clean Architecture**: Separação de responsabilidades por camadas
+
 ## 📁 Estrutura do Projeto
+
+O projeto segue **Clean Architecture** com separação clara de responsabilidades:
 
 ```
 IA/
-├── src/                    # Código fonte TypeScript
-│   ├── app.ts             # Aplicação Hono centralizada (rotas e lógica)
-│   ├── chunker.ts         # Divisão de texto em chunks
-│   ├── documentProcessor.ts  # Processamento de documentos (PDF, DOCX, etc)
-│   ├── embeddings.ts      # Geração de embeddings
-│   ├── generator.ts        # Geração de respostas (LLM)
-│   ├── retriever.ts        # Busca de documentos relevantes
-│   ├── types.ts           # Tipos TypeScript compartilhados
-│   ├── utils.ts           # Funções utilitárias
-│   └── vectorDb.ts        # Vector database customizada
+├── src/
+│   ├── domain/                    # Camada de Domínio (regras de negócio)
+│   │   ├── entities/              # Entidades de domínio
+│   │   │   └── chunker.ts         # Divisão de texto em chunks
+│   │   ├── interfaces/            # Contratos (interfaces)
+│   │   │   ├── documentProcessor.interface.ts
+│   │   │   ├── embeddingGenerator.interface.ts
+│   │   │   ├── responseGenerator.interface.ts
+│   │   │   ├── retriever.interface.ts
+│   │   │   ├── textChunker.interface.ts
+│   │   │   ├── vectorSearch.interface.ts
+│   │   │   └── documentRepository.interface.ts
+│   │   ├── services/              # Serviços de domínio
+│   │   │   └── retriever.ts       # Busca de documentos relevantes
+│   │   ├── useCases/               # Casos de uso (lógica de negócio)
+│   │   │   ├── processDocumentUseCase.ts
+│   │   │   └── executeQueryUseCase.ts
+│   │   ├── valueObjects/           # Value Objects (imutáveis)
+│   │   │   ├── documentId.ts
+│   │   │   ├── sessionId.ts
+│   │   │   ├── fileSize.ts
+│   │   │   └── query.ts
+│   │   └── validators.ts          # Validações de domínio
+│   │
+│   ├── infrastructure/            # Camada de Infraestrutura (implementações)
+│   │   ├── circuitBreaker/        # Circuit Breaker pattern
+│   │   ├── container.ts           # Inversify DI Container
+│   │   ├── embeddings.ts          # Geração de embeddings (@xenova/transformers)
+│   │   ├── llm/                   # LLM (Ollama)
+│   │   │   ├── generator.ts       # Geração de respostas
+│   │   │   ├── requestQueue.ts    # Fila de requisições
+│   │   │   ├── responseCache.ts   # Cache de respostas
+│   │   │   └── retryStrategy.ts   # Estratégia de retry
+│   │   ├── ocr/                   # OCR (Tesseract.js)
+│   │   │   ├── ocrService.interface.ts
+│   │   │   └── tesseractOCRService.ts
+│   │   ├── processors/            # Processadores de documentos
+│   │   │   ├── documentProcessor.ts
+│   │   │   ├── pdfProcessor.ts
+│   │   │   ├── pdfProcessorWithOCR.ts
+│   │   │   ├── docxProcessor.ts
+│   │   │   ├── textProcessor.ts
+│   │   │   └── processorRegistry.ts
+│   │   ├── search/                # Busca vetorial
+│   │   │   └── vectorSearch.ts
+│   │   ├── sessionManagement/    # Gerenciamento de sessões
+│   │   │   └── sessionCleaner.ts
+│   │   └── storage/               # Persistência
+│   │       ├── vectorDb.ts        # Vector database
+│   │       ├── jsonDocumentRepository.ts
+│   │       ├── fileSystemStorage.ts
+│   │       └── storage.interface.ts
+│   │
+│   ├── presentation/              # Camada de Apresentação (API/HTTP)
+│   │   ├── app.ts                # Aplicação Hono (rotas)
+│   │   ├── adapters/             # Adapters
+│   │   │   └── fileAdapter.ts
+│   │   └── parsers/              # Parsers
+│   │       └── formDataParser.ts
+│   │
+│   ├── services/                 # Services (orquestração)
+│   │   ├── documentService.ts
+│   │   └── queryService.ts
+│   │
+│   ├── shared/                   # Código compartilhado
+│   │   ├── errors/               # Erros customizados
+│   │   ├── logging/              # Logger (Pino)
+│   │   ├── types/                # Tipos TypeScript compartilhados
+│   │   └── utils/                # Funções utilitárias
+│   │
+│   ├── cache/                    # Cache distribuído (Redis)
+│   │   └── distributed.ts
+│   ├── config/                   # Configuração centralizada
+│   │   └── index.ts
+│   ├── metrics/                  # Métricas Prometheus
+│   │   └── index.ts
+│   ├── rateLimiter/              # Rate Limiter distribuído
+│   │   └── distributed.ts
+│   └── redis/                    # Cliente Redis
+│       └── client.ts
 │
-├── azure/                  # Configuração para Azure Functions
-│   ├── index.ts           # Entry point para Azure Functions
-│   ├── function.json      # Configuração da Function
-│   ├── host.json          # Configuração do host
-│   ├── package.json       # Dependências específicas do Azure
-│   └── tsconfig.json      # Configuração TypeScript para Azure
+├── azure/                       # Configuração Azure Functions
+│   ├── index.ts
+│   ├── function.json
+│   ├── host.json
+│   └── package.json
 │
-├── dist/                   # Arquivos compilados (gerado automaticamente)
-├── vector_db/              # Vector database (JSON files)
-│   └── documents.json     # Documentos indexados
+├── k6-tests/                    # Testes de carga (K6)
+│   ├── basic-test.js
+│   ├── load-test.js
+│   ├── stress-test.js
+│   ├── spike-test.js
+│   └── full-test.js
 │
-├── server.ts               # Servidor Node.js (importa src/app.ts)
-├── package.json            # Dependências e scripts
-├── tsconfig.json           # Configuração TypeScript
-├── eslint.config.js        # Configuração ESLint
-├── .prettierrc.json        # Configuração Prettier
-├── .commitlintrc.json      # Configuração Conventional Commits
-├── .husky/                 # Git hooks (Husky)
-│   ├── pre-commit         # Valida lint e build antes do commit
-│   └── commit-msg         # Valida formato do commit
-└── README.md              # Este arquivo
+├── dist/                        # Arquivos compilados (gerado automaticamente)
+├── vector_db/                   # Vector database (JSON files)
+│
+├── server.ts                    # Servidor Node.js
+├── package.json                 # Dependências e scripts
+├── tsconfig.json                # Configuração TypeScript
+├── vitest.config.ts             # Configuração Vitest
+├── eslint.config.js             # Configuração ESLint
+├── .prettierrc.json             # Configuração Prettier
+├── .commitlintrc.json           # Configuração Conventional Commits
+├── .cz-config.cjs               # Configuração Commitizen
+├── cz-adapter.cjs               # Adapter Commitizen
+├── .husky/                      # Git hooks
+│   ├── pre-commit
+│   └── commit-msg
+├── test-simple.sh              # Script de testes simples
+├── test-load.sh                # Script de teste de carga
+└── README.md                    # Este arquivo
 ```
 
-## 📄 Descrição dos Arquivos
+## 🏗️ Arquitetura
 
-### Código Fonte (`src/`)
+O projeto segue **Clean Architecture** com as seguintes camadas:
 
-#### `src/app.ts`
+### Camadas
 
-**Aplicação Hono centralizada** - Contém todas as rotas e lógica do sistema RAG. Este arquivo é importado tanto pelo servidor Node.js (`server.ts`) quanto pelo Azure Functions (`azure/index.ts`), garantindo que a mesma lógica funcione em ambos os ambientes.
+1. **Domain (Domínio)**
+   - Contém regras de negócio puras
+   - Independente de frameworks e bibliotecas externas
+   - Inclui: Entidades, Interfaces, Value Objects, Use Cases
 
-**Rotas:**
+2. **Infrastructure (Infraestrutura)**
+   - Implementações concretas de interfaces do domínio
+   - Integrações com serviços externos (Ollama, Redis, etc.)
+   - Detalhes técnicos (OCR, processamento de arquivos, etc.)
 
-- `GET /api/health` - Health check
-- `POST /api/query` - Upload + query
-- `POST /api/documents/upload` - Upload de documento
-- `GET /api/collection/info` - Informações da coleção
-- `DELETE /api/collection` - Limpar coleção
+3. **Presentation (Apresentação)**
+   - Interface HTTP (Hono.js)
+   - Parsers e Adapters para requisições
+   - Orquestração de fluxos
 
-#### `src/chunker.ts`
+4. **Services (Serviços)**
+   - Orquestram casos de uso
+   - Coordenam múltiplas operações
 
-**Divisão de texto em chunks** - Divide textos longos em pedaços menores com overlap configurável. Garante que o contexto seja preservado entre chunks.
+### Princípios Aplicados
 
-**Configuração padrão:**
+- ✅ **SOLID**: Single Responsibility, Open/Closed, Liskov, Interface Segregation, Dependency Inversion
+- ✅ **Design Patterns**: Strategy, Repository, Factory, Adapter, Decorator, Circuit Breaker
+- ✅ **Dependency Injection**: Inversify para gerenciamento de dependências
+- ✅ **Value Objects**: Imutabilidade e validação (DocumentId, SessionId, Query, FileSize)
+- ✅ **Use Cases**: Encapsulamento de lógica de negócio
 
-- `chunkSize`: 1000 tokens
-- `chunkOverlap`: 200 tokens
+## 📄 Descrição dos Arquivos Principais
 
-#### `src/documentProcessor.ts`
+### Domain (Domínio)
 
-**Processamento de documentos** - Suporta múltiplos formatos:
+- **`domain/entities/chunker.ts`**: Divisão de texto em chunks (padrão: 1000 tokens, overlap 200)
+- **`domain/services/retriever.ts`**: Sistema de recuperação de documentos relevantes
+- **`domain/useCases/`**: Casos de uso que encapsulam lógica de negócio
+- **`domain/valueObjects/`**: Value Objects imutáveis (DocumentId, SessionId, Query, FileSize)
+- **`domain/interfaces/`**: Contratos (interfaces) para inversão de dependência
 
-- **PDF**: Extração de texto + OCR automático para PDFs escaneados
-- **DOCX**: Extração de texto usando mammoth
-- **HTML/TXT**: Leitura direta
+### Infrastructure (Infraestrutura)
 
-**Recursos:**
+- **`infrastructure/embeddings.ts`**: Geração de embeddings usando `@xenova/transformers` (modelo: `Xenova/all-MiniLM-L6-v2`)
+- **`infrastructure/llm/generator.ts`**: Geração de respostas usando Ollama (modelo: `llama3.2`)
+- **`infrastructure/storage/vectorDb.ts`**: Vector database customizada (JSON) com busca por similaridade
+- **`infrastructure/processors/`**: Processamento de PDF, DOCX, HTML, TXT com OCR automático
+- **`infrastructure/ocr/`**: Serviço de OCR usando Tesseract.js
+- **`infrastructure/circuitBreaker/`**: Circuit Breaker para proteção contra falhas em cascata
 
-- OCR automático quando PDF tem pouco texto
-- Suporte a arquivos até 200MB
-- Extração de metadados
+### Presentation (Apresentação)
 
-#### `src/embeddings.ts`
+- **`presentation/app.ts`**: Aplicação Hono centralizada com todas as rotas da API
+- **`presentation/parsers/formDataParser.ts`**: Parser de form-data (multipart e JSON)
+- **`presentation/adapters/fileAdapter.ts`**: Adapter para diferentes tipos de File
 
-**Geração de embeddings** - Usa `@xenova/transformers` para gerar embeddings localmente.
+### Services (Serviços)
 
-**Modelo padrão:** `Xenova/all-MiniLM-L6-v2`
+- **`services/documentService.ts`**: Orquestra processamento e indexação de documentos
+- **`services/queryService.ts`**: Orquestra execução de queries
 
-#### `src/vectorDb.ts`
+### Shared (Compartilhado)
 
-**Vector database customizada** - Armazena documentos e embeddings em JSON. Implementa busca por similaridade usando cosine similarity.
+- **`shared/types/types.ts`**: Tipos TypeScript compartilhados
+- **`shared/utils/utils.ts`**: Funções utilitárias (cosine similarity, etc.)
+- **`shared/errors/errors.ts`**: Erros customizados
+- **`shared/logging/logger.ts`**: Logger estruturado (Pino)
 
-**Recursos:**
+### Arquivos Principais
 
-- Armazenamento local (sem dependências externas)
-- Busca por similaridade
-- Filtros por metadados
-- Limpeza automática por requisição
+- **`server.ts`**: Servidor Node.js para desenvolvimento local
+- **`azure/index.ts`**: Entry point para Azure Functions
+- **`package.json`**: Dependências e scripts npm
+- **`config/index.ts`**: Configuração centralizada com validação (Zod)
 
-#### `src/retriever.ts`
-
-**Sistema de recuperação** - Busca documentos relevantes baseado na query do usuário.
-
-**Processo:**
-
-1. Gera embedding da query
-2. Busca documentos similares na vector DB
-3. Retorna top K documentos mais relevantes
-
-#### `src/generator.ts`
-
-**Geração de respostas** - Usa Ollama (LLM local) para gerar respostas baseadas no contexto recuperado.
-
-**Modelo padrão:** `llama3.2`
-
-#### `src/types.ts`
-
-**Tipos TypeScript compartilhados** - Define todas as interfaces e tipos usados no sistema.
-
-#### `src/utils.ts`
-
-**Funções utilitárias** - Funções auxiliares como `cosineSimilarity`.
-
-### Arquivos de Configuração
-
-#### `server.ts`
-
-**Servidor Node.js** - Entry point para desenvolvimento local. Importa `src/app.ts` e inicia o servidor HTTP na porta 3000.
-
-#### `azure/index.ts`
-
-**Entry point Azure Functions** - Adapta a aplicação Hono para Azure Functions usando `@marplex/hono-azurefunc-adapter`.
-
-#### `package.json`
-
-**Dependências e scripts** - Gerencia todas as dependências do projeto e scripts npm.
-
-**Scripts principais:**
-
-- `npm start` - Inicia servidor
-- `npm run dev` - Modo desenvolvimento (auto-reload)
-- `npm run build` - Compila TypeScript
-- `npm run lint` - Valida lint
-- `npm run lint:fix` - Corrige lint automaticamente
-
-#### `tsconfig.json`
-
-**Configuração TypeScript** - Define opções de compilação estritas:
-
-- `strict: true`
-- `noImplicitAny: true`
-- `strictNullChecks: true`
-- E mais...
-
-#### `eslint.config.js`
-
-**Configuração ESLint** - Regras de linting para TypeScript:
-
-- Proíbe uso de `any`
-- Valida tipos
-- Integrado com Prettier
-
-#### `.prettierrc.json`
-
-**Configuração Prettier** - Formatação automática de código.
-
-#### `.commitlintrc.json`
-
-**Configuração Conventional Commits** - Valida formato das mensagens de commit.
-
-### Azure Functions (`azure/`)
-
-#### `azure/index.ts`
-
-**Entry point Azure Functions** - Importa `src/app.ts` e adapta para Azure Functions v4.
-
-#### `azure/function.json`
-
-**Configuração da Function** - Define HTTP trigger com todos os métodos.
-
-#### `azure/host.json`
-
-**Configuração do host** - Timeout, logging, etc.
-
-#### `azure/package.json`
-
-**Dependências do Azure** - Inclui `@azure/functions` e `@marplex/hono-azurefunc-adapter`.
-
-## 🐕 Husky - Git Hooks
+## 🐕 Git Hooks (Husky)
 
 O projeto usa **Husky** para validar código e commits automaticamente.
 
-### O que é Husky?
-
-Husky é uma ferramenta que executa scripts automaticamente em eventos do Git (como antes de fazer commit).
-
 ### Hooks Configurados
 
-#### `.husky/pre-commit`
-
-Executa **antes** de cada commit:
-
-1. **lint-staged**: Valida e corrige lint apenas nos arquivos que serão commitados
-2. **Build**: Valida se o TypeScript compila sem erros
-
-**Se algum teste falhar, o commit é bloqueado!**
-
-#### `.husky/commit-msg`
-
-Valida o formato da mensagem de commit:
-
-- ✅ Deve seguir **Conventional Commits**
-- ✅ Formato: `tipo: descrição`
-- ✅ Tipos permitidos: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- **`.husky/pre-commit`**: Valida lint e build antes do commit
+- **`.husky/commit-msg`**: Valida formato Conventional Commits
 
 ### Como Fazer Commits
 
-#### Opção 1: Interface Interativa com Sugestões (Recomendado) 🎯
-
-Use o **Commitizen** que oferece uma interface interativa passo a passo **com sugestões automáticas** baseadas nos arquivos modificados:
+**Opção 1: Interface Interativa (Recomendado)**
 
 ```bash
 npm run commit
@@ -417,151 +569,21 @@ npm run commit
 git commit
 ```
 
-**Antes de abrir o menu**, o sistema analisa seus arquivos modificados e mostra uma sugestão:
+O sistema oferece sugestões automáticas baseadas nos arquivos modificados.
 
-```
-📝 Sugestão de Commit
-
-Arquivos analisados:
-  + 2 adicionado(s)
-  ~ 5 modificado(s)
-
-Sugestão:
-  feat(api): 5 arquivo(s) modificado(s) indicam "feat"
-  ✓ Alta confiança
-
-Alternativas:
-  • fix
-  • refactor
-
-Escopo sugerido: api
-```
-
-Depois você verá o menu interativo do Commitizen:
-
-```
-? Select the type of change that you're committing: (Use arrow keys)
-❯ feat:     A new feature
-  fix:      A bug fix
-  docs:     Documentation only changes
-  style:    Changes that do not affect the meaning of the code
-  refactor: A code change that neither fixes a bug nor adds a feature
-  perf:     A code change that improves performance
-  test:     Adding missing tests or correcting existing tests
-  build:    Changes that affect the build system or external dependencies
-  ci:       Changes to our CI configuration files and scripts
-  chore:    Other changes that don't modify src or test files
-  revert:   Reverts a previous commit
-```
-
-Depois você será perguntado:
-
-- **Scope** (opcional): Qual parte do código foi afetada
-- **Subject**: Descrição curta do que foi feito
-- **Body** (opcional): Descrição detalhada
-- **Breaking changes** (opcional): Se há mudanças que quebram compatibilidade
-- **Issues** (opcional): Números de issues relacionadas
-
-**Exemplo de uso:**
-
-```bash
-$ npm run commit
-
-? Select the type of change: feat
-? What is the scope of this change: api
-? Write a short, imperative tense description: adiciona endpoint de health check
-? Provide a longer description: Adiciona endpoint GET /api/health para verificar status do sistema
-? Are there any breaking changes? No
-? Does this change affect any open issues? No
-
-[master abc1234] feat(api): adiciona endpoint de health check
-```
-
-#### Opção 2: Commit Manual
-
-Se preferir escrever manualmente, use o formato:
+**Opção 2: Manual**
 
 ```bash
 git commit -m "tipo(escopo): descrição"
 ```
 
-**✅ Exemplos válidos:**
+**Formatos válidos:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 
-```bash
-git commit -m "feat: adiciona suporte a Azure Functions"
-git commit -m "fix: corrige erro de parsing de PDF"
-git commit -m "docs: atualiza README"
-git commit -m "feat(api): adiciona endpoint de health check"
-git commit -m "fix(vectorDb): corrige busca por similaridade"
-```
+**Exemplos:**
 
-**❌ Exemplos inválidos (serão bloqueados):**
-
-```bash
-git commit -m "adiciona funcionalidade"        # Sem tipo
-git commit -m "FEAT: adiciona"                # Tipo em maiúscula
-git commit -m "feat: Adiciona funcionalidade" # Subject em maiúscula
-git commit -m "feat:"                         # Sem subject
-```
-
-### Benefícios
-
-- ✅ **Qualidade**: Código sempre validado antes do commit
-- ✅ **Consistência**: Formatação automática
-- ✅ **Histórico**: Commits padronizados e fáceis de entender
-- ✅ **Prevenção**: Erros detectados antes de chegar ao repositório
-
-### Scripts Relacionados
-
-```bash
-# Fazer commit com interface interativa (recomendado)
-npm run commit
-
-# Ver sugestão de commit baseado nos arquivos modificados
-npm run suggest
-
-# Validar lint manualmente
-npm run lint
-
-# Corrigir problemas de lint automaticamente
-npm run lint:fix
-
-# Formatar código
-npm run format
-```
-
-### Como Funciona a Sugestão Automática?
-
-O sistema analisa automaticamente:
-
-- ✅ **Arquivos adicionados/modificados/removidos**
-- ✅ **Tipo de mudança** (novo código, correção, refatoração)
-- ✅ **Localização dos arquivos** (src/, test/, docs/, etc.)
-- ✅ **Conteúdo das mudanças** (novas funções, correções de bug, etc.)
-- ✅ **Escopo sugerido** baseado na estrutura de pastas
-
-**Exemplos de detecção:**
-
-- Arquivos em `src/` com novas funções → `feat`
-- Arquivos de teste → `test`
-- Correções de erro → `fix`
-- Arquivos de documentação → `docs`
-- Mudanças em `package.json` → `build`
-- Refatoração de código → `refactor`
-
-### Dica: Alias Git (Opcional)
-
-Para usar `git commit` diretamente com interface interativa, adicione um alias:
-
-```bash
-git config --global alias.cz "!npm run commit"
-```
-
-Depois você pode usar:
-
-```bash
-git cz  # Abre a interface interativa
-```
+- ✅ `feat: adiciona suporte a Azure Functions`
+- ✅ `fix(api): corrige erro de parsing`
+- ❌ `adiciona funcionalidade` (sem tipo)
 
 ## 🚀 Deploy em Produção
 
@@ -1009,83 +1031,6 @@ REQUEST_TIMEOUT=300000
    curl http://localhost:3000/api/health
    ```
 
-## 🧪 Testar em Produção
-
-### 1. Health Check:
-
-```bash
-curl http://seu-servidor:3000/api/health
-```
-
-### 2. Upload e Query:
-
-```bash
-curl -X POST http://seu-servidor:3000/api/query \
-  -F "file=@documento.pdf" \
-  -F "query=Qual é o conteúdo do documento?"
-```
-
-### 3. Verificar logs:
-
-```bash
-# Docker
-docker-compose logs -f rag-api
-
-# PM2
-pm2 logs rag-api
-
-# Systemd
-journalctl -u rag-system -f
-```
-
-## 🐛 Troubleshooting Produção
-
-### Ollama não conecta:
-
-```bash
-# Verificar se Ollama está rodando
-curl http://localhost:11434/api/tags
-
-# Verificar variável de ambiente
-echo $OLLAMA_URL
-
-# Testar conexão
-curl http://ollama-url:11434/api/tags
-```
-
-### Erro de memória:
-
-```bash
-# Aumentar memória do Node.js
-NODE_OPTIONS="--max-old-space-size=4096" npm start
-
-# Ou no PM2
-pm2 restart rag-api --update-env --max-memory-restart 4G
-```
-
-### Porta já em uso:
-
-```bash
-# Verificar o que está usando a porta
-lsof -i :3000
-
-# Mudar porta no .env
-PORT=3001
-```
-
-### Docker não inicia:
-
-```bash
-# Verificar logs
-docker-compose logs
-
-# Reconstruir imagens
-docker-compose build --no-cache
-docker-compose up -d
-```
-
-Veja a documentação completa em: [Guia de Deploy Azure](https://docs.microsoft.com/azure/azure-functions/)
-
 ## 🧪 Testando a API
 
 ### Usando curl:
@@ -1099,10 +1044,39 @@ curl -X POST http://localhost:3000/api/query \
   -F "file=@documento.pdf" \
   -F "query=Qual é o conteúdo do documento?"
 
-# Query sem arquivo (usa documentos já indexados)
+# Query sem arquivo (usa conhecimento do modelo)
 curl -X POST http://localhost:3000/api/query \
   -H "Content-Type: application/json" \
   -d '{"query": "Qual é o tema principal?"}'
+
+# Resetar Circuit Breaker (se necessário)
+curl -X POST http://localhost:3000/api/circuit-breaker/reset
+```
+
+### Usando scripts de teste:
+
+```bash
+# Testes simples
+npm run test:simple
+
+# Teste de carga (100 requisições paralelas)
+npm run test:load
+```
+
+### Usando K6 (testes de performance):
+
+```bash
+# Teste básico
+npm run test:k6:basic
+
+# Teste de carga
+npm run test:k6:load
+
+# Teste de stress
+npm run test:k6:stress
+
+# Teste completo
+npm run test:k6:full
 ```
 
 ### Usando Postman:
@@ -1113,88 +1087,98 @@ Importe a collection: `RAG_API.postman_collection.json`
 
 ### Variáveis de Ambiente
 
-Crie um arquivo `.env`:
+Crie um arquivo `.env` baseado em `.env.example`:
 
 ```env
+# Servidor
 PORT=3000
+NODE_ENV=production
+
+# Ollama
 OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+OLLAMA_MAX_CONCURRENT=20
+OLLAMA_NUM_PREDICT=2000
+OLLAMA_TEMPERATURE=0.7
+OLLAMA_TOP_P=0.9
+
+# RAG
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
+
+# Redis (opcional)
+REDIS_ENABLED=true
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
+
+# Circuit Breaker
+CIRCUIT_BREAKER_TIMEOUT=120000
+CIRCUIT_BREAKER_ERROR_THRESHOLD=50
+CIRCUIT_BREAKER_RESET_TIMEOUT=30000
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Sessões
+SESSIONS_MAX_AGE_MINUTES=60
+SESSIONS_CLEANUP_INTERVAL_MINUTES=30
 ```
 
-### Ajustar Tamanho de Chunks
+### Personalizar Configurações
 
-Edite `src/app.ts`:
+Edite `src/config/index.ts` ou use variáveis de ambiente:
 
-```typescript
-const chunker = new TextChunker({
-  chunkSize: 1000, // Tamanho do chunk
-  chunkOverlap: 200, // Overlap entre chunks
-});
-```
+- **Tamanho de chunks**: `CHUNK_SIZE=1000`, `CHUNK_OVERLAP=200`
+- **Modelo de embeddings**: `EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2`
+- **Modelo LLM**: `OLLAMA_MODEL=llama3.2`
+- **URL do Ollama**: `OLLAMA_URL=http://localhost:11434`
+- **Porta do servidor**: `PORT=3000`
 
-### Mudar Modelo de Embeddings
-
-Edite `src/app.ts`:
-
-```typescript
-const embeddingGenerator = new EmbeddingGenerator({
-  model: "Xenova/all-MiniLM-L6-v2",
-});
-```
-
-### Mudar Modelo LLM
-
-Edite `src/app.ts` ou variável de ambiente:
-
-```typescript
-const responseGenerator = new ResponseGenerator({
-  model: "llama3.2",
-  ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
-});
-```
+Veja `.env.example` para todas as opções disponíveis.
 
 ## 🐛 Troubleshooting
 
-### Erro: "Ollama não encontrado"
+### Ollama não conecta
 
 ```bash
-# Verificar se Ollama está rodando
+# Verificar se está rodando
+curl http://localhost:11434/api/tags
 ollama list
 
-# Iniciar Ollama (se necessário)
+# Iniciar (se necessário)
 ollama serve
 ```
 
-### Erro: "Modelo não carregado"
+### Modelo não encontrado
 
 ```bash
 # Baixar modelo
 ollama pull llama3.2
 ```
 
-### Erro: "Cannot find module"
+### Erros comuns
 
 ```bash
 # Reinstalar dependências
 npm install
-```
 
-### Commit bloqueado pelo Husky
-
-```bash
-# Corrigir lint automaticamente
+# Corrigir lint
 npm run lint:fix
 
-# Ou formatar código
-npm run format
-```
-
-### Erro de build
-
-```bash
-# Ver erros detalhados
+# Ver erros de build
 npm run build
 
-# Corrigir erros de TypeScript
+# Porta em uso
+lsof -i :3000  # Verificar
+PORT=3001      # Mudar no .env
+
+# Docker não inicia
+docker-compose logs
+docker-compose build --no-cache
 ```
 
 ## 📚 Recursos Adicionais

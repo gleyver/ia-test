@@ -3,263 +3,229 @@
  * Contém todas as rotas e lógica do sistema RAG
  * Pode ser usada tanto no servidor Node.js quanto no Azure Functions
  */
-import Busboy from "busboy";
-import { randomUUID } from "crypto";
-import { createWriteStream, readFileSync, statSync } from "fs";
-import { unlink, writeFile } from "fs/promises";
+import { unlink } from "fs/promises";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { tmpdir } from "os";
-import { join } from "path";
-import { Readable } from "stream";
-// Importar módulos do sistema RAG
-import { TextChunker } from "./chunker.js";
-import { DocumentProcessor } from "./documentProcessor.js";
-import { EmbeddingGenerator } from "./embeddings.js";
-import { ResponseGenerator } from "./generator.js";
-import { Retriever } from "./retriever.js";
-import { VectorDB } from "./vectorDb.js";
+import "reflect-metadata";
+import { config } from "./config/index.js";
+import { container, TYPES } from "./container.js";
+import { Query } from "./domain/valueObjects/query.js";
+import { SessionId } from "./domain/valueObjects/sessionId.js";
+import { AppError, ProcessingError, ValidationError } from "./errors.js";
+import { logger } from "./logger.js";
+import { register } from "./metrics/index.js";
+import { FileAdapter } from "./presentation/adapters/fileAdapter.js";
+import { FormDataParser } from "./presentation/parsers/formDataParser.js";
+import { distributedRateLimitMiddleware } from "./rateLimiter/distributed.js";
 // Criar app Hono
 const app = new Hono();
 // CORS
 app.use("/*", cors());
-// Inicializar componentes do RAG (lazy initialization)
-let documentProcessor = null;
-let chunker = null;
-let embeddingGenerator = null;
-let vectorDb = null;
-let retriever = null;
-let responseGenerator = null;
-function initializeRAGComponents() {
-    if (!documentProcessor) {
-        documentProcessor = new DocumentProcessor();
-        chunker = new TextChunker({ chunkSize: 1000, chunkOverlap: 200 });
-        embeddingGenerator = new EmbeddingGenerator({ model: "Xenova/all-MiniLM-L6-v2" });
-        vectorDb = new VectorDB({ collectionName: "documents" });
-        retriever = new Retriever({ vectorDb, embeddingGenerator });
-        responseGenerator = new ResponseGenerator({
-            model: "llama3.2",
-            ollamaUrl: process.env.OLLAMA_URL || "http://localhost:11434",
-        });
+// Rate Limiting distribuído (aplicar em todas as rotas da API)
+app.use("/api/*", distributedRateLimitMiddleware());
+// Middleware de métricas HTTP
+app.use("*", async (c, next) => {
+    const start = Date.now();
+    await next();
+    const duration = (Date.now() - start) / 1000;
+    const { httpRequestDuration, httpRequestsTotal } = await import("./metrics/index.js");
+    httpRequestDuration.observe({ method: c.req.method, route: c.req.path, status: c.res.status.toString() }, duration);
+    httpRequestsTotal.inc({
+        method: c.req.method,
+        route: c.req.path,
+        status: c.res.status.toString(),
+    });
+});
+// Tratamento de erros global
+app.onError((err, c) => {
+    const isDev = process.env.NODE_ENV !== "production";
+    // Se for erro estruturado (AppError), usar seus dados
+    if (err instanceof AppError) {
+        logger.error({
+            error: err.message,
+            code: err.code,
+            statusCode: err.statusCode,
+            details: err.details,
+            stack: isDev ? err.stack : undefined,
+        }, "Erro na requisição");
+        const responseBody = {
+            error: err.message,
+            code: err.code,
+        };
+        if (isDev && err.details) {
+            responseBody.details = err.details;
+        }
+        return c.json(responseBody, err.statusCode);
     }
+    // Erro genérico
+    logger.error({
+        error: err.message,
+        stack: isDev ? err.stack : undefined,
+    }, "Erro não tratado");
+    return c.json({
+        error: isDev ? err.message : "Erro interno do servidor",
+        ...(isDev && { stack: err.stack }),
+    }, 500);
+});
+// Obter serviços do container DI
+function getDocumentService() {
+    return container.get(TYPES.DocumentService);
 }
+function getQueryService() {
+    return container.get(TYPES.QueryService);
+}
+function createSessionVectorDB(sessionId) {
+    const factory = container.get(TYPES.VectorDBFactory);
+    return factory(sessionId);
+}
+// Endpoint de métricas Prometheus
+app.get("/metrics", async (c) => {
+    return c.text(await register.metrics());
+});
 // ==================== ROTAS API ====================
 // Health check
-app.get("/api/health", (c) => {
-    return c.json({ status: "ok", message: "RAG System running" });
+app.get("/api/health", async (c) => {
+    const checks = {
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        dependencies: {
+            ollama: await checkOllama(),
+            vectorDb: await checkVectorDb(),
+            redis: await checkRedis(),
+        },
+        memory: process.memoryUsage(),
+    };
+    const allHealthy = Object.values(checks.dependencies).every((d) => d.status === "ok");
+    return c.json(checks, allHealthy ? 200 : 503);
 });
+async function checkOllama() {
+    try {
+        const response = await fetch(`${config.ollama.url}/api/tags`, {
+            signal: AbortSignal.timeout(3000),
+        });
+        return response.ok
+            ? { status: "ok" }
+            : { status: "error", message: `HTTP ${response.status}` };
+    }
+    catch (error) {
+        return {
+            status: "error",
+            message: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+async function checkVectorDb() {
+    try {
+        const { access, constants } = await import("fs/promises");
+        await access(config.sessions.dbPath, constants.F_OK);
+        return { status: "ok" };
+    }
+    catch {
+        return { status: "ok", message: "Diretório será criado automaticamente" };
+    }
+}
+async function checkRedis() {
+    if (!config.redis.enabled) {
+        return { status: "ok", message: "Redis desabilitado (usando memória)" };
+    }
+    try {
+        const { getRedisClient } = await import("./redis/client.js");
+        const redis = getRedisClient();
+        if (!redis) {
+            return { status: "error", message: "Redis não conectado" };
+        }
+        await redis.ping();
+        return { status: "ok" };
+    }
+    catch (error) {
+        return {
+            status: "error",
+            message: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
 // Upload e processar documento
 app.post("/api/documents/upload", async (c) => {
+    const formDataParser = new FormDataParser();
+    const fileAdapter = new FileAdapter();
+    const documentService = getDocumentService();
     try {
-        initializeRAGComponents();
-        if (!documentProcessor || !chunker || !embeddingGenerator || !vectorDb) {
-            throw new Error("Componentes RAG não inicializados");
+        const parsed = await formDataParser.parse(c);
+        if (!parsed.file) {
+            throw new ValidationError("Nenhum arquivo enviado");
         }
-        const formData = await c.req.formData();
-        const file = formData.get("file");
-        if (!file || !(file instanceof File)) {
-            return c.json({ error: "Nenhum arquivo enviado" }, 400);
-        }
-        // Salvar arquivo temporário
-        const tempPath = join(tmpdir(), `${randomUUID()}-${file.name}`);
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        await writeFile(tempPath, buffer);
-        // Processar documento
-        const { text, metadata } = await documentProcessor.process(tempPath);
-        // Criar chunks
-        const chunks = chunker.createChunks(text, metadata);
-        // Gerar embeddings
-        const chunksWithEmbeddings = await embeddingGenerator.generateEmbeddings(chunks);
-        // Indexar na Vector DB
-        await vectorDb.addDocuments(chunksWithEmbeddings);
-        // Limpar arquivo temporário
-        await unlink(tempPath);
+        const fileLike = fileAdapter.toFileLike(parsed.file);
+        const sessionId = SessionId.generate();
+        const result = await documentService.processAndIndex(fileLike, sessionId.toString());
         return c.json({
             success: true,
-            filename: file.name,
-            chunksCreated: chunks.length,
-            metadata,
+            sessionId: result.sessionId,
+            filename: result.filename,
+            chunksCreated: result.chunksCreated,
+            metadata: result.metadata,
         });
     }
     catch (error) {
+        if (error instanceof AppError) {
+            throw error;
+        }
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error("Erro ao processar documento:", error);
-        return c.json({ error: errorMessage }, 500);
+        logger.error({ error: errorMessage }, "Erro ao processar documento");
+        throw new ProcessingError("Erro ao processar documento", { originalError: errorMessage });
     }
 });
 // Upload + Query em uma única chamada
 app.post("/api/query", async (c) => {
+    const formDataParser = new FormDataParser();
+    const fileAdapter = new FileAdapter();
+    const documentService = getDocumentService();
+    const queryService = getQueryService();
     try {
-        initializeRAGComponents();
-        if (!documentProcessor ||
-            !chunker ||
-            !embeddingGenerator ||
-            !vectorDb ||
-            !retriever ||
-            !responseGenerator) {
-            throw new Error("Componentes RAG não inicializados");
+        // Parse form-data
+        const parsed = await formDataParser.parse(c);
+        // Validar e criar Value Objects
+        if (!parsed.query || typeof parsed.query !== "string") {
+            throw new ValidationError("Query é obrigatória");
         }
-        // Verificar se é multipart/form-data ou JSON
-        const contentType = c.req.header("content-type") || "";
-        let file = null;
-        let query = null;
-        // Tentar detectar o tipo de conteúdo
-        const isMultipart = contentType.includes("multipart/form-data");
-        const isFormUrlEncoded = contentType.includes("application/x-www-form-urlencoded");
-        const isJson = contentType.includes("application/json");
-        if (isMultipart || isFormUrlEncoded) {
-            // Processar form-data usando Busboy (mais confiável que o método nativo)
-            try {
-                const rawRequest = c.req.raw;
-                // Busboy precisa dos headers em formato objeto simples (não Headers object)
-                const headers = {};
-                const requestHeaders = rawRequest.headers;
-                if (requestHeaders && typeof requestHeaders.forEach === "function") {
-                    // Se for Headers object (Web API)
-                    requestHeaders.forEach((value, key) => {
-                        headers[key.toLowerCase()] = value;
-                    });
-                }
-                else if (requestHeaders) {
-                    // Se já for objeto simples
-                    Object.entries(requestHeaders).forEach(([key, value]) => {
-                        if (typeof value === "string") {
-                            headers[key.toLowerCase()] = value;
-                        }
-                        else if (Array.isArray(value) && value.length > 0) {
-                            headers[key.toLowerCase()] = value[0];
-                        }
-                    });
-                }
-                if (!headers["content-type"]) {
-                    return c.json({
-                        error: "Erro ao processar form-data: Missing Content-Type",
-                        hint: "Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).",
-                    }, 400);
-                }
-                // Criar stream a partir do body
-                const bodyStream = rawRequest.body;
-                if (!bodyStream) {
-                    return c.json({ error: "Body vazio" }, 400);
-                }
-                // Converter ReadableStream para Node.js Readable
-                const nodeStream = bodyStream instanceof Readable
-                    ? bodyStream
-                    : Readable.fromWeb(bodyStream);
-                const busboy = Busboy({ headers });
-                await new Promise((resolve, reject) => {
-                    busboy.on("file", (name, fileStream, info) => {
-                        if (name === "file") {
-                            const filename = info.filename || "unknown";
-                            const mimeType = info.mimeType || "application/octet-stream";
-                            const tempFilePath = join(tmpdir(), `${randomUUID()}-${filename}`);
-                            const writeStream = createWriteStream(tempFilePath);
-                            fileStream.pipe(writeStream);
-                            writeStream.on("finish", () => {
-                                const stats = statSync(tempFilePath);
-                                file = {
-                                    name: filename,
-                                    size: stats.size,
-                                    type: mimeType,
-                                    tempPath: tempFilePath,
-                                    arrayBuffer: async () => {
-                                        const data = readFileSync(tempFilePath);
-                                        return data.buffer;
-                                    },
-                                };
-                            });
-                            writeStream.on("error", reject);
-                        }
-                    });
-                    busboy.on("field", (name, value) => {
-                        if (name === "query") {
-                            query = value;
-                        }
-                    });
-                    busboy.on("finish", resolve);
-                    busboy.on("error", reject);
-                    nodeStream.pipe(busboy);
-                });
-            }
-            catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                return c.json({
-                    error: `Erro ao processar form-data: ${errorMessage}`,
-                    hint: "Certifique-se de usar Content-Type: multipart/form-data. No Postman, use form-data (não raw). No curl, use -F (não --data).",
-                }, 400);
-            }
-        }
-        else if (isJson) {
-            // Processar JSON
-            const body = (await c.req.json());
-            query = body.query || null;
-        }
-        else {
-            return c.json({ error: "Content-Type não suportado. Use multipart/form-data ou application/json" }, 400);
-        }
-        // Processar arquivo se fornecido
-        if (file !== null && file !== undefined) {
-            const fileInstance = file;
-            // Verificar se é File ou FileLike usando type guards
-            let fileLike;
-            // Verificar se é File (Web API)
-            if (typeof File !== "undefined") {
-                const fileAsAny = fileInstance;
-                if (fileAsAny instanceof File) {
-                    const webFile = fileAsAny;
-                    fileLike = {
-                        name: webFile.name,
-                        size: webFile.size,
-                        type: webFile.type,
-                        arrayBuffer: () => webFile.arrayBuffer(),
-                    };
-                }
-                else {
-                    // É FileLike
-                    fileLike = fileInstance;
-                }
-            }
-            else {
-                // File não está disponível, assumir FileLike
-                fileLike = fileInstance;
-            }
-            // Validar que tem os dados necessários
+        const query = Query.fromString(parsed.query);
+        const sessionId = SessionId.generate();
+        logger.debug({ sessionId: sessionId.toString() }, "Sessão criada");
+        // CENÁRIO 1: COM arquivo
+        if (parsed.file) {
+            const fileLike = fileAdapter.toFileLike(parsed.file);
             if (fileLike.size > 0 && (fileLike.tempPath || fileLike.name)) {
-                console.log(`📄 Processando arquivo: ${fileLike.name || "desconhecido"}`);
-                // Usar caminho temporário se já existir (do Busboy), senão criar
-                let tempPath = fileLike.tempPath || "";
-                if (!tempPath) {
-                    // Salvar arquivo temporário (método tradicional - quando não usa Busboy)
-                    tempPath = join(tmpdir(), `${randomUUID()}-${fileLike.name || "file"}`);
-                    const arrayBuffer = await fileLike.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-                    await writeFile(tempPath, buffer);
-                }
+                logger.info({ filename: fileLike.name }, "CENÁRIO 1: Arquivo enviado - Processando e respondendo baseado no arquivo");
                 try {
-                    // Limpar vector_db antes de processar novo documento
-                    if (vectorDb) {
-                        await vectorDb.deleteCollection();
-                        await vectorDb.initialize();
-                    }
-                    // Processar documento
-                    const { text, metadata } = await documentProcessor.process(tempPath);
-                    // Criar chunks
-                    const chunks = chunker.createChunks(text, metadata);
-                    // Gerar embeddings
-                    const chunksWithEmbeddings = await embeddingGenerator.generateEmbeddings(chunks);
-                    // Indexar na Vector DB
-                    await vectorDb.addDocuments(chunksWithEmbeddings);
-                    console.log(`✅ Documento processado: ${chunks.length} chunks criados`);
+                    // Processar arquivo usando serviço
+                    await documentService.processAndIndex(fileLike, sessionId.toString());
+                    // Criar VectorDB para buscar documentos
+                    const sessionVectorDb = createSessionVectorDB(sessionId.toString());
+                    await sessionVectorDb.initialize();
+                    // Executar query usando serviço
+                    const result = await queryService.executeQuery(query.toString(), sessionVectorDb, true);
+                    return c.json({
+                        success: true,
+                        response: result.response,
+                        sources: result.sources,
+                        metadata: result.metadata,
+                        fileProcessed: fileLike.name || null,
+                    });
                 }
                 catch (error) {
+                    if (error instanceof AppError) {
+                        throw error;
+                    }
                     const errorMessage = error instanceof Error ? error.message : String(error);
-                    console.error("Erro ao processar documento:", errorMessage);
-                    // Continuar mesmo se houver erro no processamento do arquivo
+                    logger.error({ error: errorMessage, sessionId: sessionId.toString() }, "Erro ao processar documento");
+                    throw new ProcessingError("Erro ao processar arquivo", {
+                        originalError: errorMessage,
+                        hint: "Verifique se o arquivo está em um formato suportado (PDF, DOCX, TXT, HTML)",
+                    });
                 }
                 finally {
-                    // Limpar arquivo temporário
-                    if (fileLike.tempPath && fileLike.tempPath !== tempPath) {
+                    // Limpar arquivo temporário (se foi criado pelo parser)
+                    if (fileLike.tempPath) {
                         try {
                             await unlink(fileLike.tempPath);
                         }
@@ -267,90 +233,72 @@ app.post("/api/query", async (c) => {
                             // Ignorar erros ao deletar
                         }
                     }
-                    if (tempPath) {
-                        try {
-                            await unlink(tempPath);
-                        }
-                        catch {
-                            // Ignorar erros ao deletar
-                        }
-                    }
                 }
             }
         }
-        // Validar query
-        if (!query || typeof query !== "string" || query.trim().length === 0) {
-            return c.json({ error: "Query é obrigatória" }, 400);
-        }
-        // Buscar documentos relevantes
-        const retrievedDocs = await retriever.retrieve(query, { topK: 10 });
-        if (retrievedDocs.length === 0) {
-            return c.json({
-                success: true,
-                response: "Não encontrei informações relevantes no contexto fornecido para responder sua pergunta.",
-                sources: [],
-                metadata: {
-                    model: "llama3.2",
-                    numSources: 0,
-                },
-                fileProcessed: file
-                    ? typeof File !== "undefined" && file instanceof File
-                        ? file.name
-                        : file.name || null
-                    : null,
-            });
-        }
-        // Gerar resposta
-        const result = await responseGenerator.generate(query, retrievedDocs);
+        // CENÁRIO 2: SEM arquivo
+        logger.info("CENÁRIO 2: Sem arquivo - Respondendo usando conhecimento do modelo");
+        const result = await queryService.executeQuery(query.toString(), null, false);
         return c.json({
             success: true,
             response: result.response,
             sources: result.sources,
-            metadata: {
-                model: "llama3.2",
-                numSources: result.sources.length,
-            },
-            fileProcessed: file
-                ? typeof File !== "undefined" && file instanceof File
-                    ? file.name
-                    : file.name || null
-                : null,
+            metadata: result.metadata,
+            fileProcessed: null,
         });
     }
     catch (error) {
+        if (error instanceof AppError) {
+            throw error;
+        }
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error("Erro na query:", error);
-        return c.json({ error: errorMessage }, 500);
+        logger.error({ error: errorMessage }, "Erro na query");
+        throw new ProcessingError("Erro ao processar query", { originalError: errorMessage });
     }
 });
-// Informações da coleção
+// Informações da coleção (deprecated - agora cada sessão tem sua própria coleção)
 app.get("/api/collection/info", async (c) => {
     try {
-        initializeRAGComponents();
-        if (!vectorDb) {
-            throw new Error("VectorDB não inicializado");
-        }
-        const info = await vectorDb.getCollectionInfo();
-        return c.json(info);
+        const sessionCleaner = container.get(TYPES.SessionCleaner);
+        const stats = await sessionCleaner.getStats();
+        return c.json({
+            message: "Coleções agora são isoladas por sessão. Cada requisição cria sua própria coleção.",
+            stats: {
+                totalSessions: stats.totalSessions,
+                oldSessions: stats.oldSessions,
+                totalSizeMB: (stats.totalSize / 1024 / 1024).toFixed(2),
+                oldSessionsSizeMB: (stats.oldSessionsSize / 1024 / 1024).toFixed(2),
+            },
+            note: "Sessões antigas são limpas automaticamente.",
+        });
     }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: errorMessage }, 500);
+    catch {
+        return c.json({
+            message: "Coleções agora são isoladas por sessão. Cada requisição cria sua própria coleção.",
+            note: "Use o sessionId retornado nas respostas para identificar a coleção específica.",
+        });
     }
 });
-// Limpar coleção
+// Limpar coleção manualmente (útil para testes ou limpeza imediata)
 app.delete("/api/collection", async (c) => {
     try {
-        initializeRAGComponents();
-        if (!vectorDb) {
-            throw new Error("VectorDB não inicializado");
-        }
-        await vectorDb.deleteCollection();
-        return c.json({ success: true, message: "Coleção limpa" });
+        const sessionCleaner = container.get(TYPES.SessionCleaner);
+        const result = await sessionCleaner.cleanupNow();
+        return c.json({
+            success: true,
+            message: "Limpeza manual executada.",
+            stats: {
+                sessionsChecked: result.sessionsChecked,
+                sessionsDeleted: result.sessionsDeleted,
+                sizeFreedMB: (result.totalSizeFreed / 1024 / 1024).toFixed(2),
+                errors: result.errors,
+            },
+        });
     }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return c.json({ error: errorMessage }, 500);
+    catch {
+        return c.json({
+            message: "Limpeza automática não está configurada.",
+        });
     }
 });
 // Exportar app Hono

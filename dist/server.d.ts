@@ -6,5 +6,5 @@
  * tanto canvas quanto sharp (dependência de @xenova/transformers) carregam
  * bibliotecas nativas com classes duplicadas. Isso não afeta a funcionalidade.
  */
-export {};
+import "reflect-metadata";
 //# sourceMappingURL=server.d.ts.map

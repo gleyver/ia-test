@@ -1,14 +1,11 @@
 /**
  * Retriever para busca de documentos
+ * Implementa IRetriever
  */
-import type { EmbeddingGenerator } from "./embeddings.js";
-import type { DocumentFilter } from "./types.js";
+import type { IEmbeddingGenerator } from "./domain/interfaces/embeddingGenerator.interface.js";
+import type { IRetriever, RetrieveOptions } from "./domain/interfaces/retriever.interface.js";
 import type { SearchResult, VectorDB } from "./vectorDb.js";
-export interface RetrieveOptions {
-  topK?: number;
-  filter?: DocumentFilter;
-}
-export declare class Retriever {
+export declare class Retriever implements IRetriever {
   private vectorDb;
   private embeddingGenerator;
   constructor({
@@ -16,7 +13,7 @@ export declare class Retriever {
     embeddingGenerator,
   }: {
     vectorDb: VectorDB;
-    embeddingGenerator: EmbeddingGenerator;
+    embeddingGenerator: IEmbeddingGenerator;
   });
   retrieve(query: string, { topK, filter }?: RetrieveOptions): Promise<SearchResult[]>;
 }

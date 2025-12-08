@@ -1,12 +1,14 @@
 /**
  * Vector DB simples usando arquivos JSON (sem ChromaDB)
  * Armazena embeddings e documentos em arquivos locais
+ * Refatorado para usar Repository Pattern e separar busca de persistência
  */
 import type { ChunkMetadata } from "./chunker.js";
 export interface Document {
   id: string;
   text: string;
   embedding: number[];
+  norm?: number;
   metadata: ChunkMetadata;
 }
 export interface SearchResult {
@@ -23,12 +25,17 @@ export interface SearchOptions {
 }
 export declare class VectorDB {
   private collectionName;
-  private dbPath;
-  private collectionPath;
   private documents;
+  private _initialized;
+  private repository;
+  private vectorSearch;
   constructor({ collectionName, path }?: { collectionName?: string; path?: string });
   initialize(): Promise<void>;
-  save(): Promise<void>;
+  /**
+   * @private
+   * Salva documentos usando repositório
+   */
+  private save;
   addDocuments(
     chunks: Array<{
       text: string;

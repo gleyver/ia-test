@@ -1,0 +1,1 @@
+{"version":3,"file":"fileAdapter.d.ts","sourceRoot":"","sources":["../../../../src/presentation/adapters/fileAdapter.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,OAAO,KAAK,EAAE,QAAQ,EAAE,MAAM,6BAA6B,CAAC;AAE5D;;GAEG;AACH,qBAAa,WAAW;IACtB;;OAEG;IACH,UAAU,CAAC,IAAI,EAAE,IAAI,GAAG,QAAQ,GAAG,QAAQ;IAO3C;;OAEG;IACH,OAAO,CAAC,SAAS;IAIjB;;OAEG;IACH,OAAO,CAAC,cAAc;CAQvB"}

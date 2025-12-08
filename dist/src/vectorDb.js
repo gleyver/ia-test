@@ -1,113 +1,90 @@
 /**
  * Vector DB simples usando arquivos JSON (sem ChromaDB)
  * Armazena embeddings e documentos em arquivos locais
+ * Refatorado para usar Repository Pattern e separar busca de persistência
  */
-import { existsSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { join } from "path";
-import { cosineSimilarity } from "./utils.js";
+import { VectorSearch } from "./infrastructure/search/vectorSearch.js";
+import { FileSystemStorage } from "./infrastructure/storage/fileSystemStorage.js";
+import { JsonDocumentRepository } from "./infrastructure/storage/jsonDocumentRepository.js";
+import { logger } from "./logger.js";
 export class VectorDB {
     collectionName;
-    dbPath;
-    collectionPath;
     documents;
+    _initialized = false;
+    repository;
+    vectorSearch;
     constructor({ collectionName = "documents", path = "./vector_db", } = {}) {
         this.collectionName = collectionName;
-        this.dbPath = path;
-        this.collectionPath = join(this.dbPath, `${collectionName}.json`);
         this.documents = [];
+        // Inicializar dependências (composição)
+        const storage = new FileSystemStorage();
+        this.repository = new JsonDocumentRepository(storage, path);
+        this.vectorSearch = new VectorSearch();
     }
     async initialize() {
-        // Criar diretório se não existir
-        if (!existsSync(this.dbPath)) {
-            await mkdir(this.dbPath, { recursive: true });
+        if (this._initialized) {
+            return;
         }
-        // Carregar documentos existentes
-        if (existsSync(this.collectionPath)) {
-            try {
-                const data = await readFile(this.collectionPath, "utf-8");
-                const parsed = JSON.parse(data);
-                this.documents = Array.isArray(parsed) ? parsed : [];
-                console.log(`📂 Carregados ${this.documents.length} documentos do arquivo ${this.collectionPath}`);
+        // Carregar documentos do repositório
+        const loadedDocs = await this.repository.load(this.collectionName);
+        // Pré-computar norms para documentos que não têm (migração)
+        this.documents = loadedDocs.map((doc) => {
+            if (!doc.norm && doc.embedding) {
+                let sum = 0;
+                for (let i = 0; i < doc.embedding.length; i++) {
+                    sum += doc.embedding[i] * doc.embedding[i];
+                }
+                doc.norm = sum;
             }
-            catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                console.warn("Erro ao carregar coleção, iniciando vazia:", errorMessage);
-                this.documents = [];
-            }
-        }
-        else {
-            console.log(`📂 Arquivo de coleção não existe: ${this.collectionPath}`);
-            this.documents = [];
-        }
+            return doc;
+        });
+        logger.info({ collectionName: this.collectionName, documentCount: this.documents.length }, "Documentos carregados");
+        this._initialized = true;
     }
+    /**
+     * @private
+     * Salva documentos usando repositório
+     */
     async save() {
-        console.log(`💾 Salvando ${this.documents.length} documentos em ${this.collectionPath}`);
-        await writeFile(this.collectionPath, JSON.stringify(this.documents, null, 2), "utf-8");
-        console.log(`✅ Arquivo salvo com sucesso!`);
+        await this.repository.save(this.collectionName, this.documents);
+        logger.debug({ collectionName: this.collectionName, documentCount: this.documents.length }, "Documentos salvos");
     }
     async addDocuments(chunks) {
-        await this.initialize();
-        const newDocs = chunks.map((chunk, i) => ({
-            id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
-            text: chunk.text,
-            embedding: chunk.embedding,
-            metadata: chunk.metadata || {},
-        }));
-        console.log(`💾 Adicionando ${newDocs.length} documentos à coleção (atualmente: ${this.documents.length})`);
+        if (!this._initialized) {
+            await this.initialize();
+        }
+        // Pré-computar norms durante criação (otimização)
+        const { DocumentId } = await import("./domain/valueObjects/documentId.js");
+        const newDocs = chunks.map((chunk) => {
+            let norm = 0;
+            for (let j = 0; j < chunk.embedding.length; j++) {
+                norm += chunk.embedding[j] * chunk.embedding[j];
+            }
+            // Usar DocumentId para gerar IDs consistentes
+            const docId = DocumentId.generate();
+            return {
+                id: docId.toString(),
+                text: chunk.text,
+                embedding: chunk.embedding,
+                norm: norm,
+                metadata: chunk.metadata || {},
+            };
+        });
+        logger.debug({ newDocs: newDocs.length, currentDocs: this.documents.length }, "Adicionando documentos à coleção");
         this.documents.push(...newDocs);
-        console.log(`💾 Total de documentos após adicionar: ${this.documents.length}`);
+        logger.debug({ totalDocs: this.documents.length }, "Total de documentos após adicionar");
+        // Salvar usando repositório
         await this.save();
-        // Verificar se salvou corretamente
-        await this.initialize();
-        console.log(`✅ Verificação: ${this.documents.length} documentos na coleção após salvar`);
     }
     async search(queryEmbedding, { topK = 5, filter = null } = {}) {
         await this.initialize();
-        console.log(`🔍 Buscando em ${this.documents.length} documentos indexados...`);
         if (this.documents.length === 0) {
-            console.warn(`⚠️ Vector DB está vazia! Nenhum documento indexado.`);
+            logger.warn("Vector DB está vazia! Nenhum documento indexado.");
             return [];
         }
-        // Calcular similaridade para cada documento
-        const results = this.documents
-            .map((doc) => {
-            // Aplicar filtro se fornecido
-            if (filter) {
-                const matches = Object.entries(filter).every(([key, value]) => {
-                    // Acessar propriedades do metadata de forma type-safe
-                    const metadataValue = doc.metadata[key];
-                    return metadataValue === value;
-                });
-                if (!matches)
-                    return null;
-            }
-            const similarity = cosineSimilarity(queryEmbedding, doc.embedding);
-            return {
-                id: doc.id,
-                text: doc.text,
-                metadata: doc.metadata,
-                distance: 1 - similarity, // Converter similaridade para distância
-                similarity: similarity,
-            };
-        })
-            .filter((doc) => doc !== null) // Remover documentos que não passaram no filtro
-            .sort((a, b) => a.distance - b.distance) // Ordenar por distância (menor = mais similar)
-            .slice(0, topK); // Pegar apenas top K
-        console.log(`📊 Busca concluída: ${results.length} resultados encontrados`);
-        if (results.length > 0) {
-            console.log(`📄 Melhor match: similaridade ${results[0].similarity.toFixed(4)}, texto: "${results[0].text.substring(0, 100)}..."`);
-        }
-        else {
-            console.warn(`⚠️ Nenhum resultado encontrado! Verificando similaridades...`);
-            // Mostrar top 3 similaridades mesmo que baixas
-            const allSimilarities = this.documents
-                .map((doc) => cosineSimilarity(queryEmbedding, doc.embedding))
-                .sort((a, b) => b - a)
-                .slice(0, 3);
-            console.log(`📊 Top 3 similaridades (mesmo baixas): ${allSimilarities.map((s) => s.toFixed(4)).join(", ")}`);
-        }
-        return results;
+        logger.debug({ documentCount: this.documents.length, topK }, "Iniciando busca na VectorDB");
+        // Usar VectorSearch para buscar
+        return this.vectorSearch.search(queryEmbedding, this.documents, { topK, filter });
     }
     async getCollectionInfo() {
         await this.initialize();
@@ -118,8 +95,9 @@ export class VectorDB {
     }
     async deleteCollection() {
         this.documents = [];
-        await this.save();
-        console.log(`🗑️ Coleção '${this.collectionName}' limpa e salva.`);
+        await this.repository.delete(this.collectionName);
+        this._initialized = false;
+        logger.info({ collectionName: this.collectionName }, "Coleção deletada");
     }
 }
 //# sourceMappingURL=vectorDb.js.map

@@ -18,7 +18,8 @@ export interface Chunk {
   text: string;
   metadata: ChunkMetadata;
 }
-export declare class TextChunker {
+import type { ITextChunker } from "./domain/interfaces/textChunker.interface.js";
+export declare class TextChunker implements ITextChunker {
   private chunkSize;
   private chunkOverlap;
   constructor({ chunkSize, chunkOverlap }?: { chunkSize?: number; chunkOverlap?: number });
