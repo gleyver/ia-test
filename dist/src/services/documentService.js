@@ -24,7 +24,7 @@ import { ProcessDocumentUseCase } from "../domain/useCases/processDocumentUseCas
 import { sanitizeFilename, validateFile } from "../domain/validators.js";
 import { FileSize } from "../domain/valueObjects/fileSize.js";
 import { SessionId } from "../domain/valueObjects/sessionId.js";
-import { documentProcessingDuration, documentsProcessed, } from "../metrics/index.js";
+import { documentProcessingDuration, documentsProcessed } from "../metrics/index.js";
 import { ProcessingError } from "../shared/errors/errors.js";
 import { logger } from "../shared/logging/logger.js";
 import { TYPES } from "../shared/types/types.js";
@@ -36,9 +36,7 @@ let DocumentService = class DocumentService {
     }
     async processAndIndex(file, sessionId) {
         const startTime = Date.now();
-        const finalSessionId = sessionId
-            ? SessionId.fromString(sessionId)
-            : SessionId.generate();
+        const finalSessionId = sessionId ? SessionId.fromString(sessionId) : SessionId.generate();
         let tempPath = null;
         let shouldCleanup = false;
         try {

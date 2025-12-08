@@ -20,10 +20,7 @@ export { TYPES };
 // Criar container
 export const container = new Container();
 // Bindings de Core (singletons)
-container
-    .bind(TYPES.DocumentProcessor)
-    .to(DocumentProcessor)
-    .inSingletonScope();
+container.bind(TYPES.DocumentProcessor).to(DocumentProcessor).inSingletonScope();
 container
     .bind(TYPES.TextChunker)
     .toDynamicValue(() => {
@@ -62,9 +59,7 @@ container
 })
     .inSingletonScope();
 // Factory para VectorDB (cria nova instância por sessão)
-container
-    .bind(TYPES.VectorDBFactory)
-    .toFactory(() => {
+container.bind(TYPES.VectorDBFactory).toFactory(() => {
     return (sessionId) => {
         return new VectorDB({
             collectionName: `session-${sessionId}`,
@@ -72,9 +67,7 @@ container
     };
 });
 // Factory para Retriever
-container
-    .bind(TYPES.RetrieverFactory)
-    .toFactory(() => {
+container.bind(TYPES.RetrieverFactory).toFactory(() => {
     return (vectorDb) => {
         const embeddingGenerator = container.get(TYPES.EmbeddingGenerator);
         return new Retriever({
@@ -84,14 +77,8 @@ container
     };
 });
 // Bindings de Services
-container
-    .bind(TYPES.DocumentService)
-    .to(DocumentService)
-    .inSingletonScope();
-container
-    .bind(TYPES.QueryService)
-    .to(QueryService)
-    .inSingletonScope();
+container.bind(TYPES.DocumentService).to(DocumentService).inSingletonScope();
+container.bind(TYPES.QueryService).to(QueryService).inSingletonScope();
 // Cache (singleton)
 container
     .bind(TYPES.EmbeddingCache)

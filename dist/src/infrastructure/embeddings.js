@@ -26,7 +26,7 @@ export class EmbeddingGenerator {
      * Singleton: retorna instância única do EmbeddingGenerator
      * Garante que apenas uma instância do modelo seja carregada em memória
      */
-    static getInstance({ model = "Xenova/all-MiniLM-L6-v2" } = {}) {
+    static getInstance({ model = "Xenova/all-MiniLM-L6-v2", } = {}) {
         if (!EmbeddingGenerator.instance) {
             EmbeddingGenerator.instance = new EmbeddingGenerator({ model });
             logger.info("EmbeddingGenerator singleton criado");
@@ -35,8 +35,7 @@ export class EmbeddingGenerator {
     }
     async initialize() {
         // Se o modelo mudou, recarregar pipeline
-        if (!EmbeddingGenerator.sharedPipeline ||
-            EmbeddingGenerator.sharedModel !== this.model) {
+        if (!EmbeddingGenerator.sharedPipeline || EmbeddingGenerator.sharedModel !== this.model) {
             logger.info({ model: this.model }, "Carregando modelo de embeddings");
             EmbeddingGenerator.sharedPipeline = (await pipeline("feature-extraction", this.model));
             EmbeddingGenerator.sharedModel = this.model;

@@ -38,7 +38,7 @@ export class VectorSearch {
                 continue;
             }
             const similarity = cosineSimilarity(queryEmbedding, doc.embedding, queryNorm, doc.norm);
-            if (similarity < minSimilarityThreshold && (heap.length || (heap.size?.() || 0)) >= topK) {
+            if (similarity < minSimilarityThreshold && (heap.length || heap.size?.() || 0) >= topK) {
                 continue;
             }
             this.addToHeap(heap, {
@@ -81,7 +81,7 @@ export class VectorSearch {
                 continue;
             }
             const similarity = cosineSimilarity(queryEmbedding, doc.embedding, queryNorm, doc.norm);
-            if (similarity < minSimilarityThreshold && (heap.length || (heap.size?.() || 0)) >= topK) {
+            if (similarity < minSimilarityThreshold && (heap.length || heap.size?.() || 0) >= topK) {
                 continue;
             }
             this.addToHeap(heap, {
@@ -110,7 +110,7 @@ export class VectorSearch {
      * Adiciona resultado ao heap mantendo top K
      */
     addToHeap(heap, result, topK) {
-        const heapSize = heap.length || (heap.size?.() || 0);
+        const heapSize = heap.length || heap.size?.() || 0;
         if (heapSize < topK) {
             heap.push(result);
         }
@@ -127,7 +127,7 @@ export class VectorSearch {
      */
     extractResults(heap) {
         const results = [];
-        const heapSize = heap.length || (heap.size?.() || 0);
+        const heapSize = heap.length || heap.size?.() || 0;
         for (let i = 0; i < heapSize; i++) {
             const item = heap.pop();
             if (item) {

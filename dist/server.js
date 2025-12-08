@@ -17,10 +17,11 @@ if (process.platform === "darwin") {
         // Filtrar avisos sobre GNotificationCenterDelegate e conflitos de classes Objective-C
         // Padrões mais abrangentes para capturar todas as variações
         if (str.includes("GNotificationCenterDelegate") ||
-            str.includes("objc[") && (str.includes("Class") && str.includes("implemented in both") ||
-                str.includes("duplicate") ||
-                str.includes("libgio") && str.includes("libvips")) ||
-            str.includes("libgio-2.0.0.dylib") && str.includes("libvips-cpp")) {
+            (str.includes("objc[") &&
+                ((str.includes("Class") && str.includes("implemented in both")) ||
+                    str.includes("duplicate") ||
+                    (str.includes("libgio") && str.includes("libvips")))) ||
+            (str.includes("libgio-2.0.0.dylib") && str.includes("libvips-cpp"))) {
             return true; // Suprimir esse aviso específico
         }
         // Preservar comportamento original para outros erros

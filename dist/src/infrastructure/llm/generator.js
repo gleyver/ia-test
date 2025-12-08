@@ -137,9 +137,7 @@ class OllamaPool {
             }
             // Extrair fontes se houver documentos
             const sources = retrievedDocs && retrievedDocs.length > 0
-                ? [
-                    ...new Set(retrievedDocs.map((doc) => doc.metadata?.source || "Desconhecido")),
-                ]
+                ? [...new Set(retrievedDocs.map((doc) => doc.metadata?.source || "Desconhecido"))]
                 : [];
             const duration = (Date.now() - startTime) / 1000;
             ollamaRequestDuration.observe(duration);
@@ -162,7 +160,7 @@ class OllamaPool {
                 error: errorMessage,
                 ollamaUrl: this.ollamaUrl,
                 model: this.model,
-                duration
+                duration,
             }, "Erro ao chamar Ollama");
             throw error;
         }
@@ -224,9 +222,7 @@ export class ResponseGenerator {
         return retrievedDocs
             .map((doc, i) => {
             const source = doc.metadata?.source || "Desconhecido";
-            const text = doc.text.length > maxDocLength
-                ? doc.text.substring(0, maxDocLength) + "..."
-                : doc.text;
+            const text = doc.text.length > maxDocLength ? doc.text.substring(0, maxDocLength) + "..." : doc.text;
             return `[${i + 1}] ${source}: ${text}`;
         })
             .join("\n\n");

@@ -212,7 +212,10 @@ export class TesseractOCRService {
                 const textContent = await page.getTextContent();
                 const textItems = textContent.items
                     .map((item) => {
-                    if (item && typeof item === "object" && "str" in item && typeof item.str === "string") {
+                    if (item &&
+                        typeof item === "object" &&
+                        "str" in item &&
+                        typeof item.str === "string") {
                         return item.str;
                     }
                     return "";

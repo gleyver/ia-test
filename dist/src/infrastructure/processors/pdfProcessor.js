@@ -31,9 +31,7 @@ export class PDFProcessor {
         if (info.info && typeof info.info === "object") {
             const infoObj = {};
             Object.entries(info.info).forEach(([key, value]) => {
-                if (typeof value === "string" ||
-                    typeof value === "number" ||
-                    typeof value === "boolean") {
+                if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
                     infoObj[key] = value;
                 }
             });

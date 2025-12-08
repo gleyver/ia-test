@@ -18,7 +18,7 @@ import { inject, injectable } from "inversify";
 import "reflect-metadata";
 import { ExecuteQueryUseCase } from "../domain/useCases/executeQueryUseCase.js";
 import { Query } from "../domain/valueObjects/query.js";
-import { queriesProcessed, queryProcessingDuration, } from "../metrics/index.js";
+import { queriesProcessed, queryProcessingDuration } from "../metrics/index.js";
 import { ProcessingError } from "../shared/errors/errors.js";
 import { logger } from "../shared/logging/logger.js";
 import { TYPES } from "../shared/types/types.js";

@@ -21,8 +21,14 @@ const configSchema = z.object({
         topP: z.number().min(0).max(1).default(0.9),
     }),
     files: z.object({
-        maxSize: z.number().int().positive().default(50 * 1024 * 1024), // 50MB
-        allowedTypes: z.array(z.string()).default([
+        maxSize: z
+            .number()
+            .int()
+            .positive()
+            .default(50 * 1024 * 1024), // 50MB
+        allowedTypes: z
+            .array(z.string())
+            .default([
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "text/plain",
@@ -35,7 +41,11 @@ const configSchema = z.object({
         dbPath: z.string().default("./vector_db"),
     }),
     rateLimit: z.object({
-        windowMs: z.number().int().positive().default(15 * 60 * 1000), // 15min
+        windowMs: z
+            .number()
+            .int()
+            .positive()
+            .default(15 * 60 * 1000), // 15min
         maxRequests: z.number().int().positive().default(100),
     }),
     redis: z.object({
