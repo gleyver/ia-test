@@ -1,171 +1,329 @@
 {
   "info": {
-    "_postman_id": "rag-system-api",
-    "name": "RAG System API",
-    "description": "Collection para testar o sistema RAG (Retrieval-Augmented Generation) - API completa com upload e query unificados",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "_postman_id": "rag-system-api-v2",
+    "name": "RAG System API - Complete",
+    "description": "Collection completa para o sistema RAG (Retrieval-Augmented Generation)\n\n## 🔐 Autenticação\n\nA API suporta autenticação JWT opcional. Para usar:\n1. Faça login em `/api/auth/login` para obter um token\n2. Use o token no header `Authorization: Bearer <token>`\n3. A autenticação é opcional - endpoints funcionam sem token (compatibilidade)\n\n## 📋 Endpoints Disponíveis\n\n### Autenticação\n- `POST /api/auth/login` - Gerar token JWT\n- `POST /api/auth/verify` - Verificar token\n\n### Documentos\n- `POST /api/documents/upload` - Upload e processar documento\n- `POST /api/query` - Query com ou sem arquivo\n\n### Sistema\n- `GET /api/health` - Health check\n- `GET /api/collection/info` - Informações da coleção\n- `DELETE /api/collection` - Limpar coleção\n- `POST /api/circuit-breaker/reset` - Resetar Circuit Breaker\n- `GET /metrics` - Métricas Prometheus\n\n## 🔒 Permissões (RBAC)\n\nSe autenticado, as seguintes permissões são verificadas:\n- **admin**: Acesso total\n- **premium**: Upload, query, delete\n- **user**: Upload, query\n- **guest**: Query apenas\n\n## ⚡ Rate Limiting\n\n- Limite padrão: 100 requisições por 15 minutos\n- Headers de resposta: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "2.0.0"
   },
   "item": [
     {
-      "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/api/health",
-          "host": ["{{base_url}}"],
-          "path": ["api", "health"]
-        },
-        "description": "Verifica se a API está funcionando"
-      },
-      "response": []
-    },
-    {
-      "name": "Query - Upload + Pergunta (Tudo em Um)",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
+      "name": "🔐 Autenticação",
+      "item": [
+        {
+          "name": "Login - Gerar Token JWT",
+          "event": [
             {
-              "key": "file",
-              "type": "file",
-              "src": [],
-              "description": "Arquivo PDF, DOCX, TXT ou HTML (opcional - pode fazer query sem upload)"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.token) {",
+                  "        pm.collectionVariables.set('auth_token', response.token);",
+                  "        pm.collectionVariables.set('user_id', response.user.userId);",
+                  "        pm.collectionVariables.set('user_role', response.user.role);",
+                  "        console.log('✅ Token salvo automaticamente!');",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"user123\",\n  \"role\": \"premium\",\n  \"email\": \"user@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            {
-              "key": "query",
-              "value": "Qual é o conteúdo do documento?",
-              "type": "text",
-              "description": "Sua pergunta sobre o documento (obrigatório)"
-            }
-          ],
-          "options": {
-            "formdata": {}
-          }
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Gera um token JWT para autenticação.\n\n**Body:**\n```json\n{\n  \"userId\": \"string (obrigatório)\",\n  \"role\": \"user | premium | admin | guest (opcional, padrão: user)\",\n  \"email\": \"string (opcional)\"\n}\n```\n\n**Resposta:**\n```json\n{\n  \"success\": true,\n  \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n  \"expiresIn\": 3600,\n  \"user\": {\n    \"userId\": \"user123\",\n    \"role\": \"premium\",\n    \"email\": \"user@example.com\"\n  }\n}\n```\n\n**Nota:** O token é salvo automaticamente na variável `auth_token` após login bem-sucedido."
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{base_url}}/api/query",
-          "host": ["{{base_url}}"],
-          "path": ["api", "query"]
-        },
-        "description": "⭐ ENDPOINT PRINCIPAL: Faz upload de documento (opcional) + pergunta em uma única chamada.\n\n✅ CONFIGURAÇÃO CORRETA:\n- Body deve estar em 'form-data' (NÃO raw)\n- Campo 'file': tipo File (selecionar arquivo)\n- Campo 'query': tipo Text (digitar pergunta)\n- NÃO definir Content-Type manualmente (Postman faz automaticamente)\n\nSe enviar arquivo, ele será processado e indexado antes de responder a query.\nSe não enviar arquivo, usa documentos já indexados."
-      },
-      "response": []
+        {
+          "name": "Verify - Verificar Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{auth_token}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verify"]
+            },
+            "description": "Verifica se um token JWT é válido.\n\n**Body:**\n```json\n{\n  \"token\": \"string (obrigatório)\"\n}\n```\n\n**Resposta (válido):**\n```json\n{\n  \"valid\": true,\n  \"user\": {\n    \"userId\": \"user123\",\n    \"role\": \"premium\",\n    \"email\": \"user@example.com\"\n  }\n}\n```\n\n**Resposta (inválido):**\n```json\n{\n  \"valid\": false,\n  \"error\": \"Token expirado\"\n}\n```"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints de autenticação JWT"
     },
     {
-      "name": "Query - Apenas Pergunta (JSON)",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json",
-            "type": "text"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"Qual é o conteúdo do documento?\"\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
+      "name": "📄 Documentos",
+      "item": [
+        {
+          "name": "Upload Documento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text",
+                "description": "Token JWT (opcional - autenticação não é obrigatória)"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Arquivo PDF, DOCX, TXT ou HTML para processar e indexar"
+                }
+              ],
+              "options": {
+                "formdata": {}
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "documents", "upload"]
+            },
+            "description": "Faz upload e processa um documento separadamente (sem fazer query).\n\n**Form Data:**\n- `file` (obrigatório): Arquivo PDF, DOCX, TXT ou HTML\n\n**Resposta:**\n```json\n{\n  \"success\": true,\n  \"sessionId\": \"uuid\",\n  \"filename\": \"documento.pdf\",\n  \"chunksCreated\": 10,\n  \"metadata\": {\n    \"extension\": \".pdf\",\n    \"pages\": 5\n  }\n}\n```\n\n**Permissões:**\n- Se autenticado: requer permissão `document:upload`\n- Sem autenticação: funciona normalmente (compatibilidade)\n\n**Use este endpoint quando:**\n- Quer indexar múltiplos documentos antes de fazer queries\n- Quer apenas adicionar documentos ao banco de dados\n- Não precisa fazer query imediatamente"
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{base_url}}/api/query",
-          "host": ["{{base_url}}"],
-          "path": ["api", "query"]
+        {
+          "name": "Query - Upload + Pergunta (Tudo em Um)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text",
+                "description": "Token JWT (opcional)"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Arquivo PDF, DOCX, TXT ou HTML (opcional - pode fazer query sem upload)"
+                },
+                {
+                  "key": "query",
+                  "value": "Qual é o conteúdo do documento?",
+                  "type": "text",
+                  "description": "Sua pergunta sobre o documento (obrigatório)"
+                }
+              ],
+              "options": {
+                "formdata": {}
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/query",
+              "host": ["{{base_url}}"],
+              "path": ["api", "query"]
+            },
+            "description": "⭐ **ENDPOINT PRINCIPAL**: Faz upload de documento (opcional) + pergunta em uma única chamada.\n\n**Form Data:**\n- `file` (opcional): Arquivo PDF, DOCX, TXT ou HTML\n- `query` (obrigatório): Pergunta sobre o documento\n\n**Resposta (com arquivo):**\n```json\n{\n  \"success\": true,\n  \"response\": \"Resposta gerada pelo LLM...\",\n  \"sources\": [\"documento.pdf\"],\n  \"metadata\": {\n    \"model\": \"llama3.2\",\n    \"numSources\": 1\n  },\n  \"fileProcessed\": \"documento.pdf\"\n}\n```\n\n**Resposta (sem arquivo):**\n```json\n{\n  \"success\": true,\n  \"response\": \"Resposta usando conhecimento do modelo...\",\n  \"sources\": [],\n  \"metadata\": {\n    \"model\": \"llama3.2\",\n    \"numSources\": 0\n  },\n  \"fileProcessed\": null\n}\n```\n\n**Permissões:**\n- Se autenticado: requer permissão `query:create`\n- Sem autenticação: funciona normalmente\n\n**✅ CONFIGURAÇÃO CORRETA:**\n- Body deve estar em 'form-data' (NÃO raw)\n- Campo 'file': tipo File (selecionar arquivo)\n- Campo 'query': tipo Text (digitar pergunta)\n- NÃO definir Content-Type manualmente (Postman faz automaticamente)"
+          },
+          "response": []
         },
-        "description": "Faz uma pergunta sobre documentos já indexados usando formato JSON (sem fazer upload de arquivo).\n\n✅ Use este endpoint quando:\n- Já fez upload de documentos anteriormente\n- Quer fazer múltiplas perguntas sobre os mesmos documentos\n- Não precisa enviar arquivo"
-      },
-      "response": []
+        {
+          "name": "Query - Apenas Pergunta (JSON)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text",
+                "description": "Token JWT (opcional)"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"Qual é o conteúdo do documento?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/query",
+              "host": ["{{base_url}}"],
+              "path": ["api", "query"]
+            },
+            "description": "Faz uma pergunta sobre documentos já indexados usando formato JSON (sem fazer upload de arquivo).\n\n**Body (JSON):**\n```json\n{\n  \"query\": \"string (obrigatório)\"\n}\n```\n\n**Resposta:**\n```json\n{\n  \"success\": true,\n  \"response\": \"Resposta usando conhecimento do modelo...\",\n  \"sources\": [],\n  \"metadata\": {\n    \"model\": \"llama3.2\",\n    \"numSources\": 0\n  },\n  \"fileProcessed\": null\n}\n```\n\n**Permissões:**\n- Se autenticado: requer permissão `query:create`\n- Sem autenticação: funciona normalmente\n\n**Use este endpoint quando:**\n- Já fez upload de documentos anteriormente\n- Quer fazer múltiplas perguntas sobre os mesmos documentos\n- Não precisa enviar arquivo"
+          },
+          "response": []
+        },
+        {
+          "name": "Query - Apenas Pergunta (Form-Data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text",
+                "description": "Token JWT (opcional)"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "query",
+                  "value": "Qual é o conteúdo do documento?",
+                  "type": "text",
+                  "description": "Sua pergunta sobre documentos já indexados"
+                }
+              ],
+              "options": {
+                "formdata": {}
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/query",
+              "host": ["{{base_url}}"],
+              "path": ["api", "query"]
+            },
+            "description": "Faz uma pergunta sobre documentos já indexados usando form-data (sem fazer upload de arquivo).\n\n**Form Data:**\n- `query` (obrigatório): Pergunta sobre documentos indexados\n\n**Permissões:**\n- Se autenticado: requer permissão `query:create`\n- Sem autenticação: funciona normalmente\n\n**Use este endpoint quando:**\n- Já fez upload de documentos anteriormente\n- Prefere usar form-data ao invés de JSON"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento de documentos e queries"
     },
     {
-      "name": "Query - Apenas Pergunta (Form-Data)",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
-            {
-              "key": "query",
-              "value": "Qual é o conteúdo do documento?",
-              "type": "text",
-              "description": "Sua pergunta sobre documentos já indexados"
-            }
-          ],
-          "options": {
-            "formdata": {}
-          }
+      "name": "🔧 Sistema",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Verifica a saúde do sistema e suas dependências.\n\n**Resposta:**\n```json\n{\n  \"status\": \"ok\",\n  \"timestamp\": \"2024-12-08T15:00:00.000Z\",\n  \"uptime\": 3600,\n  \"dependencies\": {\n    \"ollama\": { \"status\": \"ok\" },\n    \"vectorDb\": { \"status\": \"ok\" },\n    \"redis\": { \"status\": \"ok\", \"message\": \"Redis desabilitado (usando memória)\" },\n    \"circuitBreaker\": {\n      \"state\": \"CLOSED\",\n      \"stats\": {\n        \"failures\": 0,\n        \"successes\": 10,\n        \"lastFailureTime\": null,\n        \"state\": \"CLOSED\"\n      }\n    }\n  },\n  \"memory\": {\n    \"rss\": 123456789,\n    \"heapTotal\": 123456789,\n    \"heapUsed\": 123456789,\n    \"external\": 123456789\n  }\n}\n```\n\n**Status Codes:**\n- `200`: Todos os serviços estão saudáveis\n- `503`: Algum serviço está com problema"
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{base_url}}/api/query",
-          "host": ["{{base_url}}"],
-          "path": ["api", "query"]
+        {
+          "name": "Métricas Prometheus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["metrics"]
+            },
+            "description": "Retorna métricas no formato Prometheus.\n\n**Resposta:**\n```\n# HELP http_requests_total Total de requisições HTTP\n# TYPE http_requests_total counter\nhttp_requests_total{method=\"GET\",route=\"/api/health\",status=\"200\"} 10\n\n# HELP http_request_duration_seconds Duração das requisições HTTP\n# TYPE http_request_duration_seconds histogram\nhttp_request_duration_seconds_bucket{method=\"GET\",route=\"/api/health\",status=\"200\",le=\"0.1\"} 8\n...\n```\n\n**Use para:**\n- Monitoramento com Prometheus\n- Grafana dashboards\n- Alertas"
+          },
+          "response": []
         },
-        "description": "Faz uma pergunta sobre documentos já indexados usando form-data (sem fazer upload de arquivo).\n\n✅ Use este endpoint quando:\n- Já fez upload de documentos anteriormente\n- Prefere usar form-data ao invés de JSON"
-      },
-      "response": []
-    },
-    {
-      "name": "Upload Documento (Separado)",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "formdata",
-          "formdata": [
-            {
-              "key": "file",
-              "type": "file",
-              "src": [],
-              "description": "Arquivo PDF, DOCX, TXT ou HTML para processar"
-            }
-          ],
-          "options": {
-            "formdata": {}
-          }
+        {
+          "name": "Info da Coleção",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/collection/info",
+              "host": ["{{base_url}}"],
+              "path": ["api", "collection", "info"]
+            },
+            "description": "Retorna informações sobre as sessões e coleções.\n\n**Resposta:**\n```json\n{\n  \"message\": \"Coleções agora são isoladas por sessão. Cada requisição cria sua própria coleção.\",\n  \"stats\": {\n    \"totalSessions\": 10,\n    \"oldSessions\": 5,\n    \"totalSizeMB\": \"2.45\",\n    \"oldSessionsSizeMB\": \"1.20\"\n  },\n  \"note\": \"Sessões antigas são limpas automaticamente.\"\n}\n```\n\n**Nota:** Cada requisição cria sua própria sessão isolada. Use o `sessionId` retornado nas respostas para identificar coleções específicas."
+          },
+          "response": []
         },
-        "url": {
-          "raw": "{{base_url}}/api/documents/upload",
-          "host": ["{{base_url}}"],
-          "path": ["api", "documents", "upload"]
+        {
+          "name": "Limpar Coleção",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{auth_token}}",
+                "type": "text",
+                "description": "Token JWT (opcional, mas requer permissão se autenticado)"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/collection",
+              "host": ["{{base_url}}"],
+              "path": ["api", "collection"]
+            },
+            "description": "Limpa manualmente todas as sessões expiradas.\n\n**Resposta:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Limpeza manual executada.\",\n  \"stats\": {\n    \"sessionsChecked\": 10,\n    \"sessionsDeleted\": 5,\n    \"sizeFreedMB\": \"2.45\",\n    \"errors\": []\n  }\n}\n```\n\n**Permissões:**\n- Se autenticado: requer permissão `collection:delete` (admin ou premium)\n- Sem autenticação: funciona normalmente\n\n**⚠️ ATENÇÃO:** Esta ação remove sessões expiradas. Sessões ativas não são afetadas."
+          },
+          "response": []
         },
-        "description": "Faz upload e processa um documento separadamente (sem fazer query).\n\n✅ Use este endpoint quando:\n- Quer indexar múltiplos documentos antes de fazer queries\n- Quer apenas adicionar documentos ao banco de dados\n- Não precisa fazer query imediatamente"
-      },
-      "response": []
-    },
-    {
-      "name": "Info da Coleção",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/api/collection/info",
-          "host": ["{{base_url}}"],
-          "path": ["api", "collection", "info"]
-        },
-        "description": "Retorna informações sobre a coleção (nome e quantidade de documentos indexados).\n\nUse para verificar quantos documentos foram indexados antes de fazer queries."
-      },
-      "response": []
-    },
-    {
-      "name": "Limpar Coleção",
-      "request": {
-        "method": "DELETE",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/api/collection",
-          "host": ["{{base_url}}"],
-          "path": ["api", "collection"]
-        },
-        "description": "Remove todos os documentos da coleção (limpa o banco de dados de vetores).\n\n⚠️ ATENÇÃO: Esta ação não pode ser desfeita! Todos os documentos indexados serão removidos."
-      },
-      "response": []
+        {
+          "name": "Reset Circuit Breaker",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/circuit-breaker/reset",
+              "host": ["{{base_url}}"],
+              "path": ["api", "circuit-breaker", "reset"]
+            },
+            "description": "Reseta o Circuit Breaker manualmente (útil quando está aberto).\n\n**Resposta:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Circuit Breaker resetado com sucesso\",\n  \"state\": \"CLOSED\"\n}\n```\n\n**Use quando:**\n- Circuit Breaker está aberto (bloqueando requisições)\n- Serviço externo (Ollama) foi recuperado\n- Quer forçar reset manual"
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints de sistema e monitoramento"
     }
   ],
   "variable": [
@@ -174,6 +332,24 @@
       "value": "http://localhost:3000",
       "type": "string",
       "description": "URL base da API. Altere se o servidor estiver rodando em outra porta ou host."
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string",
+      "description": "Token JWT gerado automaticamente após login. Use no header Authorization: Bearer {{auth_token}}"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string",
+      "description": "ID do usuário autenticado (preenchido automaticamente após login)"
+    },
+    {
+      "key": "user_role",
+      "value": "",
+      "type": "string",
+      "description": "Role do usuário autenticado (preenchido automaticamente após login)"
     }
   ],
   "event": [
@@ -185,6 +361,35 @@
           "// Garantir que não há Content-Type manual para form-data",
           "if (pm.request.body && pm.request.body.mode === 'formdata') {",
           "    pm.request.headers.remove('Content-Type');",
+          "}",
+          "",
+          "// Log de requisição (opcional - descomente para debug)",
+          "// console.log('Request:', pm.request.method, pm.request.url.toString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Verificar rate limiting",
+          "if (pm.response.headers.has('X-RateLimit-Remaining')) {",
+          "    const remaining = pm.response.headers.get('X-RateLimit-Remaining');",
+          "    const limit = pm.response.headers.get('X-RateLimit-Limit');",
+          "    const reset = pm.response.headers.get('X-RateLimit-Reset');",
+          "    console.log(`Rate Limit: ${remaining}/${limit} (reset em ${new Date(reset * 1000).toLocaleTimeString()})`);",
+          "}",
+          "",
+          "// Verificar autenticação",
+          "if (pm.response.code === 401) {",
+          "    console.warn('⚠️ Token inválido ou expirado. Faça login novamente.');",
+          "    pm.collectionVariables.set('auth_token', '');",
+          "}",
+          "",
+          "// Verificar permissões",
+          "if (pm.response.code === 403) {",
+          "    console.warn('⚠️ Acesso negado. Verifique suas permissões.');",
           "}"
         ]
       }

@@ -4,6 +4,7 @@
  * Refatorado para usar Repository Pattern e separar busca de persistência
  */
 import { logger } from "../../shared/logging/logger.js";
+import { HNSWVectorSearch } from "../search/hnswVectorSearch.js";
 import { VectorSearch } from "../search/vectorSearch.js";
 import { FileSystemStorage } from "./fileSystemStorage.js";
 import { JsonDocumentRepository } from "./jsonDocumentRepository.js";
@@ -19,7 +20,10 @@ export class VectorDB {
         // Inicializar dependências (composição)
         const storage = new FileSystemStorage();
         this.repository = new JsonDocumentRepository(storage, path);
-        this.vectorSearch = new VectorSearch();
+        // Usar HNSW se disponível, senão usar busca sequencial
+        this.vectorSearch = HNSWVectorSearch.isAvailable()
+            ? new HNSWVectorSearch()
+            : new VectorSearch();
     }
     async initialize() {
         if (this._initialized) {
@@ -73,6 +77,11 @@ export class VectorDB {
         logger.debug({ newDocs: newDocs.length, currentDocs: this.documents.length }, "Adicionando documentos à coleção");
         this.documents.push(...newDocs);
         logger.debug({ totalDocs: this.documents.length }, "Total de documentos após adicionar");
+        // Atualizar índice HNSW se disponível
+        if (this.vectorSearch instanceof HNSWVectorSearch) {
+            const dimension = newDocs[0]?.embedding?.length || 384;
+            await this.vectorSearch.updateIndex(this.collectionName, newDocs, dimension);
+        }
         // Salvar usando repositório
         await this.save();
     }

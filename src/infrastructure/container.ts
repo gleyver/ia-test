@@ -9,6 +9,7 @@ import { config } from "../config/index.js";
 import { TextChunker } from "../domain/entities/chunker.js";
 import { Retriever } from "../domain/services/retriever.js";
 import { DocumentService } from "../services/documentService.js";
+import { HealthCheckService } from "../services/healthCheckService.js";
 import { QueryService } from "../services/queryService.js";
 import { TYPES } from "../shared/types/types.js";
 import { EmbeddingGenerator } from "./embeddings.js";
@@ -91,6 +92,11 @@ container.bind<(vectorDb: VectorDB) => Retriever>(TYPES.RetrieverFactory).toFact
 container.bind<DocumentService>(TYPES.DocumentService).to(DocumentService).inSingletonScope();
 
 container.bind<QueryService>(TYPES.QueryService).to(QueryService).inSingletonScope();
+
+container
+  .bind<HealthCheckService>(TYPES.HealthCheckService)
+  .to(HealthCheckService)
+  .inSingletonScope();
 
 // Cache (singleton)
 container

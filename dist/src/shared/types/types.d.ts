@@ -76,6 +76,7 @@ export declare const TYPES: {
   readonly SessionCleaner: symbol;
   readonly DocumentService: symbol;
   readonly QueryService: symbol;
+  readonly HealthCheckService: symbol;
   readonly VectorDBFactory: symbol;
   readonly RetrieverFactory: symbol;
   readonly EmbeddingCache: symbol;

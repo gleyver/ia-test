@@ -4,7 +4,6 @@
  * Pode ser usada tanto no servidor Node.js quanto no Azure Functions
  */
 
-import { unlink } from "fs/promises";
 import { Context, Hono } from "hono";
 import { cors } from "hono/cors";
 import "reflect-metadata";
@@ -14,24 +13,59 @@ import { SessionId } from "../domain/valueObjects/sessionId.js";
 import { container, TYPES } from "../infrastructure/container.js";
 import type { ResponseGenerator } from "../infrastructure/llm/generator.js";
 import type { SessionCleaner } from "../infrastructure/sessionManagement/sessionCleaner.js";
-import type { VectorDB } from "../infrastructure/storage/vectorDb.js";
 import { register } from "../metrics/index.js";
 import { distributedRateLimitMiddleware } from "../rateLimiter/distributed.js";
 import type { DocumentService } from "../services/documentService.js";
-import type { QueryService } from "../services/queryService.js";
+import type { HealthCheckService } from "../services/healthCheckService.js";
 import { AppError, ProcessingError, ValidationError } from "../shared/errors/errors.js";
 import { logger } from "../shared/logging/logger.js";
 import { FileAdapter } from "./adapters/fileAdapter.js";
+import {
+  handleQueryError,
+  handleQueryWithFile,
+  handleQueryWithoutFile,
+} from "./handlers/queryHandlers.js";
+import { optionalAuth } from "./middleware/authMiddleware.js";
+import { optionalPermission } from "./middleware/optionalPermissionMiddleware.js";
 import { FormDataParser } from "./parsers/formDataParser.js";
+import authRoutes from "./routes/authRoutes.js";
 
 // Criar app Hono
 const app = new Hono();
 
-// CORS
-app.use("/*", cors());
+// CORS restritivo
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || ["http://localhost:3000"];
+app.use(
+  "/*",
+  cors({
+    origin: (origin) => {
+      // Permitir requisições sem origin (ex: Postman, curl)
+      if (!origin) {
+        return origin;
+      }
+      // Verificar se origin está na lista permitida
+      if (allowedOrigins.includes(origin)) {
+        return origin;
+      }
+      // Em desenvolvimento, permitir localhost
+      if (config.nodeEnv === "development" && origin.includes("localhost")) {
+        return origin;
+      }
+      return null; // Bloquear origem não permitida
+    },
+    credentials: true,
+    maxAge: 86400, // 24 horas
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+  })
+);
 
 // Rate Limiting distribuído (aplicar em todas as rotas da API)
 app.use("/api/*", distributedRateLimitMiddleware());
+
+// Autenticação opcional para todas as rotas da API
+// Rotas específicas podem usar requireAuth() para tornar obrigatório
+app.use("/api/*", optionalAuth());
 
 // Middleware de métricas HTTP
 app.use("*", async (c, next) => {
@@ -97,239 +131,117 @@ app.onError((err, c) => {
 });
 
 // Obter serviços do container DI
-function getDocumentService(): DocumentService {
-  return container.get<DocumentService>(TYPES.DocumentService);
-}
-
-function getQueryService(): QueryService {
-  return container.get<QueryService>(TYPES.QueryService);
-}
-
-function createSessionVectorDB(sessionId: string): VectorDB {
-  const factory = container.get<(sessionId: string) => VectorDB>(TYPES.VectorDBFactory);
-  return factory(sessionId);
-}
 
 // Endpoint de métricas Prometheus
 app.get("/metrics", async (c: Context) => {
   return c.text(await register.metrics());
 });
 
+// Rotas de autenticação (sem autenticação obrigatória)
+app.route("/api/auth", authRoutes);
+
 // ==================== ROTAS API ====================
 
-// Health check
+// Health check (sem autenticação)
 app.get("/api/health", async (c: Context) => {
-  // Verificar estado do Circuit Breaker
-  let circuitBreakerState = "unknown";
-  let circuitBreakerStats = null;
   try {
-    const responseGenerator = container.get<ResponseGenerator>(TYPES.ResponseGenerator);
-    const circuitBreaker = responseGenerator.getCircuitBreaker();
-    if (circuitBreaker) {
-      circuitBreakerState = circuitBreaker.getState();
-      circuitBreakerStats = circuitBreaker.getStats();
-    }
-  } catch {
-    // Ignorar erros ao verificar circuit breaker
-  }
+    const healthCheckService = container.get<HealthCheckService>(TYPES.HealthCheckService);
+    const result = await healthCheckService.checkAll();
 
-  const checks = {
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    dependencies: {
-      ollama: await checkOllama(),
-      vectorDb: await checkVectorDb(),
-      redis: await checkRedis(),
-      circuitBreaker: {
-        state: circuitBreakerState,
-        stats: circuitBreakerStats,
-      },
-    },
-    memory: process.memoryUsage(),
-  };
-
-  const allHealthy = Object.values(checks.dependencies).every((d) => {
-    if (typeof d === "object" && d !== null && "status" in d) {
-      return d.status === "ok";
-    }
-    return true; // circuitBreaker não tem status
-  });
-  return c.json(checks, allHealthy ? 200 : 503);
-});
-
-async function checkOllama(): Promise<{ status: string; message?: string }> {
-  try {
-    const response = await fetch(`${config.ollama.url}/api/tags`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    return response.ok ? { status: "ok" } : { status: "error", message: `HTTP ${response.status}` };
-  } catch (error) {
-    return {
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function checkVectorDb(): Promise<{ status: string; message?: string }> {
-  try {
-    const { access, constants } = await import("fs/promises");
-    await access(config.sessions.dbPath, constants.F_OK);
-    return { status: "ok" };
-  } catch {
-    return { status: "ok", message: "Diretório será criado automaticamente" };
-  }
-}
-
-async function checkRedis(): Promise<{ status: string; message?: string }> {
-  if (!config.redis.enabled) {
-    return { status: "ok", message: "Redis desabilitado (usando memória)" };
-  }
-  try {
-    const { getRedisClient } = await import("../redis/client.js");
-    const redis = getRedisClient();
-    if (!redis) {
-      return { status: "error", message: "Redis não conectado" };
-    }
-    await redis.ping();
-    return { status: "ok" };
-  } catch (error) {
-    return {
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-// Upload e processar documento
-app.post("/api/documents/upload", async (c: Context) => {
-  const formDataParser = new FormDataParser();
-  const fileAdapter = new FileAdapter();
-  const documentService = getDocumentService();
-
-  try {
-    const parsed = await formDataParser.parse(c);
-
-    if (!parsed.file) {
-      throw new ValidationError("Nenhum arquivo enviado");
-    }
-
-    const fileLike = fileAdapter.toFileLike(parsed.file);
-    const sessionId = SessionId.generate();
-    const result = await documentService.processAndIndex(fileLike, sessionId.toString());
-
-    return c.json({
-      success: true,
-      sessionId: result.sessionId,
-      filename: result.filename,
-      chunksCreated: result.chunksCreated,
-      metadata: result.metadata,
-    });
-  } catch (error: unknown) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error({ error: errorMessage }, "Erro ao processar documento");
-    throw new ProcessingError("Erro ao processar documento", { originalError: errorMessage });
-  }
-});
-
-// Upload + Query em uma única chamada
-app.post("/api/query", async (c: Context) => {
-  const formDataParser = new FormDataParser();
-  const fileAdapter = new FileAdapter();
-  const documentService = getDocumentService();
-  const queryService = getQueryService();
-
-  try {
-    // Parse form-data
-    const parsed = await formDataParser.parse(c);
-
-    // Validar e criar Value Objects
-    if (!parsed.query || typeof parsed.query !== "string") {
-      throw new ValidationError("Query é obrigatória");
-    }
-    const query = Query.fromString(parsed.query);
-    const sessionId = SessionId.generate();
-
-    logger.debug({ sessionId: sessionId.toString() }, "Sessão criada");
-
-    // CENÁRIO 1: COM arquivo
-    if (parsed.file) {
-      const fileLike = fileAdapter.toFileLike(parsed.file);
-
-      if (fileLike.size > 0 && (fileLike.tempPath || fileLike.name)) {
-        logger.info(
-          { filename: fileLike.name },
-          "CENÁRIO 1: Arquivo enviado - Processando e respondendo baseado no arquivo"
-        );
-
-        try {
-          // Processar arquivo usando serviço
-          await documentService.processAndIndex(fileLike, sessionId.toString());
-
-          // Criar VectorDB para buscar documentos
-          const sessionVectorDb = createSessionVectorDB(sessionId.toString());
-          await sessionVectorDb.initialize();
-
-          // Executar query usando serviço
-          const result = await queryService.executeQuery(query.toString(), sessionVectorDb, true);
-
-          return c.json({
-            success: true,
-            response: result.response,
-            sources: result.sources,
-            metadata: result.metadata,
-            fileProcessed: fileLike.name || null,
-          });
-        } catch (error: unknown) {
-          if (error instanceof AppError) {
-            throw error;
-          }
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error(
-            { error: errorMessage, sessionId: sessionId.toString() },
-            "Erro ao processar documento"
-          );
-          throw new ProcessingError("Erro ao processar arquivo", {
-            originalError: errorMessage,
-            hint: "Verifique se o arquivo está em um formato suportado (PDF, DOCX, TXT, HTML)",
-          });
-        } finally {
-          // Limpar arquivo temporário (se foi criado pelo parser)
-          if (fileLike.tempPath) {
-            try {
-              await unlink(fileLike.tempPath);
-            } catch {
-              // Ignorar erros ao deletar
-            }
-          }
-        }
+    const allHealthy = Object.values(result.dependencies).every((d) => {
+      if (typeof d === "object" && d !== null && "status" in d) {
+        return d.status === "ok";
       }
-    }
-
-    // CENÁRIO 2: SEM arquivo
-    logger.info("CENÁRIO 2: Sem arquivo - Respondendo usando conhecimento do modelo");
-    const result = await queryService.executeQuery(query.toString(), null, false);
-
-    return c.json({
-      success: true,
-      response: result.response,
-      sources: result.sources,
-      metadata: result.metadata,
-      fileProcessed: null,
+      return true; // circuitBreaker não tem status
     });
-  } catch (error: unknown) {
-    if (error instanceof AppError) {
-      throw error;
-    }
+
+    return c.json(result, allHealthy ? 200 : 503);
+  } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error({ error: errorMessage }, "Erro na query");
-    throw new ProcessingError("Erro ao processar query", { originalError: errorMessage });
+    logger.error({ error: errorMessage }, "Erro no health check");
+    return c.json(
+      {
+        status: "error",
+        message: "Erro ao verificar saúde do sistema",
+      },
+      503
+    );
   }
 });
+
+// Upload e processar documento (autenticação opcional, mas valida permissão se autenticado)
+app.post(
+  "/api/documents/upload",
+  optionalAuth(),
+  optionalPermission("document", "upload"),
+  async (c: Context) => {
+    const formDataParser = new FormDataParser();
+    const fileAdapter = new FileAdapter();
+    const documentService = container.get<DocumentService>(TYPES.DocumentService);
+
+    try {
+      const parsed = await formDataParser.parse(c);
+
+      if (!parsed.file) {
+        throw new ValidationError("Nenhum arquivo enviado");
+      }
+
+      const fileLike = fileAdapter.toFileLike(parsed.file);
+      const sessionId = SessionId.generate();
+      const result = await documentService.processAndIndex(fileLike, sessionId.toString());
+
+      return c.json({
+        success: true,
+        sessionId: result.sessionId,
+        filename: result.filename,
+        chunksCreated: result.chunksCreated,
+        metadata: result.metadata,
+      });
+    } catch (error: unknown) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error: errorMessage }, "Erro ao processar documento");
+      throw new ProcessingError("Erro ao processar documento", { originalError: errorMessage });
+    }
+  }
+);
+
+// Upload + Query em uma única chamada (autenticação opcional)
+app.post(
+  "/api/query",
+  optionalAuth(),
+  optionalPermission("query", "create"),
+  async (c: Context) => {
+    const formDataParser = new FormDataParser();
+    const fileAdapter = new FileAdapter();
+
+    try {
+      // Parse form-data
+      const parsed = await formDataParser.parse(c);
+
+      // Validar e criar Value Objects
+      if (!parsed.query || typeof parsed.query !== "string") {
+        throw new ValidationError("Query é obrigatória");
+      }
+      const query = Query.fromString(parsed.query);
+      const sessionId = SessionId.generate();
+
+      logger.debug({ sessionId: sessionId.toString() }, "Sessão criada");
+
+      // Processar com ou sem arquivo
+      if (parsed.file) {
+        const fileLike = fileAdapter.toFileLike(parsed.file);
+        return await handleQueryWithFile(c, query, sessionId, fileLike);
+      }
+
+      return await handleQueryWithoutFile(c, query);
+    } catch (error: unknown) {
+      return handleQueryError(error);
+    }
+  }
+);
 
 // Informações da coleção (deprecated - agora cada sessão tem sua própria coleção)
 app.get("/api/collection/info", async (c: Context) => {
@@ -375,27 +287,32 @@ app.post("/api/circuit-breaker/reset", async (c: Context) => {
   }
 });
 
-// Limpar coleção manualmente (útil para testes ou limpeza imediata)
-app.delete("/api/collection", async (c: Context) => {
-  try {
-    const sessionCleaner = container.get<SessionCleaner>(TYPES.SessionCleaner);
-    const result = await sessionCleaner.cleanupNow();
-    return c.json({
-      success: true,
-      message: "Limpeza manual executada.",
-      stats: {
-        sessionsChecked: result.sessionsChecked,
-        sessionsDeleted: result.sessionsDeleted,
-        sizeFreedMB: (result.totalSizeFreed / 1024 / 1024).toFixed(2),
-        errors: result.errors,
-      },
-    });
-  } catch {
-    return c.json({
-      message: "Limpeza automática não está configurada.",
-    });
+// Limpar coleção manualmente (autenticação opcional, mas valida permissão se autenticado)
+app.delete(
+  "/api/collection",
+  optionalAuth(),
+  optionalPermission("collection", "delete"),
+  async (c: Context) => {
+    try {
+      const sessionCleaner = container.get<SessionCleaner>(TYPES.SessionCleaner);
+      const result = await sessionCleaner.cleanupNow();
+      return c.json({
+        success: true,
+        message: "Limpeza manual executada.",
+        stats: {
+          sessionsChecked: result.sessionsChecked,
+          sessionsDeleted: result.sessionsDeleted,
+          sizeFreedMB: (result.totalSizeFreed / 1024 / 1024).toFixed(2),
+          errors: result.errors,
+        },
+      });
+    } catch {
+      return c.json({
+        message: "Limpeza automática não está configurada.",
+      });
+    }
   }
-});
+);
 
 // Exportar app Hono
 export default app;

@@ -18,6 +18,7 @@ export const TYPES = {
     // Services
     DocumentService: Symbol.for("DocumentService"),
     QueryService: Symbol.for("QueryService"),
+    HealthCheckService: Symbol.for("HealthCheckService"),
     // Factories
     VectorDBFactory: Symbol.for("VectorDBFactory"),
     RetrieverFactory: Symbol.for("RetrieverFactory"),

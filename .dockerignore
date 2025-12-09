@@ -1,15 +1,48 @@
+# Dependencies
 node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
 dist
+*.map
+coverage
+
+# Git
 .git
+.gitignore
+.github
+
+# Environment
 .env
-*.log
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
 vector_db
 *.traineddata
 tessdata
-.DS_Store
-.vscode
-.idea
 azure
+k6-tests
+test-*.sh
+
+# Documentation (keep only README.md)
 *.md
 !README.md
+
+# CI/CD
+.github/workflows/*.yml
+!ci.yml
 

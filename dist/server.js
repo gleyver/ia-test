@@ -35,12 +35,23 @@ import { serve } from "@hono/node-server";
 import dotenv from "dotenv";
 import "reflect-metadata";
 import { config } from "./src/config/index.js";
+import { validateRequiredEnvVars } from "./src/config/validateEnv.js";
 import { container, TYPES } from "./src/infrastructure/container.js";
 import { DocumentProcessor } from "./src/infrastructure/processors/documentProcessor.js";
 import { closeRedis } from "./src/redis/client.js";
 import { logger } from "./src/shared/logging/logger.js";
 // Carregar variáveis de ambiente
 dotenv.config();
+// Validar variáveis de ambiente obrigatórias
+try {
+    validateRequiredEnvVars();
+}
+catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("❌ Erro na validação de variáveis de ambiente:");
+    console.error(errorMessage);
+    process.exit(1);
+}
 // Importar app Hono centralizado (todas as rotas estão lá)
 import app from "./src/presentation/app.js";
 // Iniciar servidor

@@ -8,6 +8,7 @@ import { config } from "../config/index.js";
 import { TextChunker } from "../domain/entities/chunker.js";
 import { Retriever } from "../domain/services/retriever.js";
 import { DocumentService } from "../services/documentService.js";
+import { HealthCheckService } from "../services/healthCheckService.js";
 import { QueryService } from "../services/queryService.js";
 import { TYPES } from "../shared/types/types.js";
 import { EmbeddingGenerator } from "./embeddings.js";
@@ -79,6 +80,10 @@ container.bind(TYPES.RetrieverFactory).toFactory(() => {
 // Bindings de Services
 container.bind(TYPES.DocumentService).to(DocumentService).inSingletonScope();
 container.bind(TYPES.QueryService).to(QueryService).inSingletonScope();
+container
+    .bind(TYPES.HealthCheckService)
+    .to(HealthCheckService)
+    .inSingletonScope();
 // Cache (singleton)
 container
     .bind(TYPES.EmbeddingCache)

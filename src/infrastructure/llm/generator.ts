@@ -39,7 +39,7 @@ class OllamaPool {
   public readonly circuitBreaker: CircuitBreaker;
 
   constructor({
-    maxConcurrent = 20,
+    maxConcurrent,
     ollamaUrl = "http://localhost:11434",
     model = "llama3.2",
     maxRetries = 3,
@@ -55,8 +55,8 @@ class OllamaPool {
     cacheMaxAgeMinutes?: number;
     maxCacheSize?: number;
   } = {}) {
-    // maxConcurrent pode ser sobrescrito via env OLLAMA_MAX_CONCURRENT
-    const finalMaxConcurrent = Number(process.env.OLLAMA_MAX_CONCURRENT) || maxConcurrent;
+    // Usar config centralizado ao invés de process.env direto
+    const finalMaxConcurrent = maxConcurrent || config.ollama.maxConcurrent || 20;
 
     this.ollamaUrl = ollamaUrl;
     this.model = model;
@@ -281,9 +281,9 @@ export class ResponseGenerator implements IResponseGenerator {
     if (!ResponseGenerator.instance) {
       ResponseGenerator.instance = new ResponseGenerator();
       // Criar pool compartilhado
-      // Configurações do pool (todas configuráveis via env)
+      // Configurações do pool (todas configuráveis via config centralizado)
       ResponseGenerator.sharedPool = new OllamaPool({
-        maxConcurrent: 20, // Padrão: 20 (configurável via OLLAMA_MAX_CONCURRENT)
+        maxConcurrent: config.ollama.maxConcurrent, // Usar config centralizado
         ollamaUrl,
         model,
         maxRetries: 3,

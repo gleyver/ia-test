@@ -1,5 +1,6 @@
 /**
  * Cliente Redis para cache distribuído e rate limiting
+ * Com connection pooling otimizado para alta concorrência
  */
 
 import Redis from "ioredis";
@@ -20,15 +21,31 @@ export function getRedisClient(): Redis | null {
         port: config.redis.port,
         password: config.redis.password,
         db: config.redis.db,
+        // Connection pooling otimizado
+        family: 4, // IPv4
+        keepAlive: 30000, // Keep-alive de 30s
+        connectTimeout: 10000, // Timeout de conexão de 10s
+        lazyConnect: false, // Conectar imediatamente
+        // Retry strategy melhorada
         retryStrategy: (times) => {
           const delay = Math.min(times * 50, 2000);
           return delay;
         },
+        // Pool configuration (ioredis gerencia automaticamente)
+        enableReadyCheck: true,
+        enableOfflineQueue: true,
         maxRetriesPerRequest: 3,
+        // Performance
+        enableAutoPipelining: true, // Pipeline automático para múltiplas operações
+        // Connection pool size (padrão do ioredis é ilimitado, mas controlado pelo sistema)
       });
 
       redisClient.on("connect", () => {
         logger.info("Redis conectado");
+      });
+
+      redisClient.on("ready", () => {
+        logger.info("Redis pronto para receber comandos");
       });
 
       redisClient.on("error", (error) => {
@@ -37,6 +54,10 @@ export function getRedisClient(): Redis | null {
 
       redisClient.on("close", () => {
         logger.warn("Conexão Redis fechada");
+      });
+
+      redisClient.on("reconnecting", (delay: number) => {
+        logger.info({ delay }, "Reconectando ao Redis");
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

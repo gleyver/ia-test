@@ -1,0 +1,1 @@
+{"version":3,"file":"optionalPermissionMiddleware.d.ts","sourceRoot":"","sources":["../../../../src/presentation/middleware/optionalPermissionMiddleware.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAEH,OAAO,EAAE,OAAO,EAAE,IAAI,EAAE,MAAM,MAAM,CAAC;AAMrC;;;GAGG;AACH,wBAAgB,kBAAkB,CAAC,QAAQ,EAAE,MAAM,EAAE,MAAM,EAAE,MAAM,IACnD,GAAG,OAAO,EAAE,MAAM,IAAI,mBAsBrC"}

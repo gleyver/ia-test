@@ -8,6 +8,7 @@ import type { ChunkMetadata } from "../../domain/entities/chunker.js";
 import type { IDocumentRepository } from "../../domain/interfaces/documentRepository.interface.js";
 import type { IVectorSearch } from "../../domain/interfaces/vectorSearch.interface.js";
 import { logger } from "../../shared/logging/logger.js";
+import { HNSWVectorSearch } from "../search/hnswVectorSearch.js";
 import { VectorSearch } from "../search/vectorSearch.js";
 import { FileSystemStorage } from "./fileSystemStorage.js";
 import { JsonDocumentRepository } from "./jsonDocumentRepository.js";
@@ -52,7 +53,10 @@ export class VectorDB {
     // Inicializar dependências (composição)
     const storage = new FileSystemStorage();
     this.repository = new JsonDocumentRepository(storage, path);
-    this.vectorSearch = new VectorSearch();
+    // Usar HNSW se disponível, senão usar busca sequencial
+    this.vectorSearch = HNSWVectorSearch.isAvailable()
+      ? new HNSWVectorSearch()
+      : new VectorSearch();
   }
 
   async initialize(): Promise<void> {
@@ -129,6 +133,12 @@ export class VectorDB {
     );
     this.documents.push(...newDocs);
     logger.debug({ totalDocs: this.documents.length }, "Total de documentos após adicionar");
+
+    // Atualizar índice HNSW se disponível
+    if (this.vectorSearch instanceof HNSWVectorSearch) {
+      const dimension = newDocs[0]?.embedding?.length || 384;
+      await this.vectorSearch.updateIndex(this.collectionName, newDocs, dimension);
+    }
 
     // Salvar usando repositório
     await this.save();
