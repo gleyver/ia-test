@@ -15,7 +15,7 @@ import { distributedRateLimitMiddleware } from "../rateLimiter/distributed.js";
 import { AppError, ProcessingError, ValidationError } from "../shared/errors/errors.js";
 import { logger } from "../shared/logging/logger.js";
 import { FileAdapter } from "./adapters/fileAdapter.js";
-import { handleQueryError, handleQueryWithFile, handleQueryWithoutFile } from "./handlers/queryHandlers.js";
+import { handleQueryError, handleQueryWithFile, handleQueryWithoutFile, } from "./handlers/queryHandlers.js";
 import { optionalAuth } from "./middleware/authMiddleware.js";
 import { optionalPermission } from "./middleware/optionalPermissionMiddleware.js";
 import { FormDataParser } from "./parsers/formDataParser.js";

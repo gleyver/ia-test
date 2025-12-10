@@ -29,6 +29,9 @@ Este sistema permite:
 - **Zod**: Validação de configuração
 - **Husky**: Git hooks para validação automática
 - **K6**: Testes de carga e performance
+- **JWT (jsonwebtoken)**: Autenticação e autorização
+- **hnswlib-node**: Índice HNSW para busca vetorial otimizada
+- **GitHub Actions**: CI/CD automatizado
 
 ## 📦 Como Baixar e Instalar
 
@@ -87,14 +90,34 @@ Baixe de: https://ollama.ai/download
 ollama pull llama3.2
 ```
 
-### 6. Configurar variáveis de ambiente (opcional)
+### 6. Configurar variáveis de ambiente
 
 Crie um arquivo `.env` na raiz:
 
 ```env
+# Servidor
 PORT=3000
+NODE_ENV=development
+
+# Ollama
 OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+
+# Autenticação JWT (obrigatório em produção)
+JWT_SECRET=seu-secret-super-seguro-com-pelo-menos-32-caracteres
+
+# CORS (opcional)
+ALLOWED_ORIGINS=http://localhost:3000,https://seu-dominio.com
+
+# Redis (opcional)
+REDIS_ENABLED=false
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
+
+> ⚠️ **IMPORTANTE:** Em produção, `JWT_SECRET` é obrigatório e deve ter pelo menos 32 caracteres. O sistema valida automaticamente no startup.
 
 ## 🚀 Como Rodar
 
@@ -192,7 +215,102 @@ node dist/server.js
 
 **Nota:** Para esta opção, você precisa ter o Ollama instalado e rodando. Veja a seção "📦 Como Baixar e Instalar" acima para instruções de instalação do Ollama.
 
+## 🔐 Autenticação
+
+A API suporta autenticação JWT opcional. Para usar:
+
+1. **Fazer login:**
+
+   ```bash
+   POST /api/auth/login
+   Body: { "userId": "user123", "role": "premium", "email": "user@example.com" }
+   ```
+
+2. **Usar token nas requisições:**
+
+   ```bash
+   Authorization: Bearer <token>
+   ```
+
+3. **Verificar token:**
+   ```bash
+   POST /api/auth/verify
+   Body: { "token": "<seu-token>" }
+   ```
+
+**Roles disponíveis:**
+
+- `admin` - Acesso total
+- `premium` - Upload, query, delete
+- `user` - Upload, query
+- `guest` - Query apenas
+
+**Nota:** A autenticação é opcional por padrão (compatibilidade retroativa). Endpoints funcionam sem token.
+
 ## 📡 API Endpoints
+
+### `POST /api/auth/login`
+
+Gera token JWT para autenticação.
+
+**Body (JSON):**
+
+```json
+{
+  "userId": "user123",
+  "role": "premium",
+  "email": "user@example.com"
+}
+```
+
+**Resposta:**
+
+```json
+{
+  "success": true,
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiresIn": 3600,
+  "user": {
+    "userId": "user123",
+    "role": "premium",
+    "email": "user@example.com"
+  }
+}
+```
+
+### `POST /api/auth/verify`
+
+Verifica se um token JWT é válido.
+
+**Body (JSON):**
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Resposta (válido):**
+
+```json
+{
+  "valid": true,
+  "user": {
+    "userId": "user123",
+    "role": "premium",
+    "email": "user@example.com"
+  }
+}
+```
+
+**Resposta (inválido):**
+
+```json
+{
+  "valid": false,
+  "error": "Token expirado"
+}
+```
 
 ### `GET /api/health`
 
@@ -227,6 +345,12 @@ Health check do sistema com status de dependências.
 
 Upload de documento + query em uma única chamada.
 
+**Headers (opcional):**
+
+```
+Authorization: Bearer <token>
+```
+
 **Form Data (multipart/form-data):**
 
 - `file`: Arquivo (PDF, DOCX, TXT, HTML) - opcional
@@ -239,6 +363,11 @@ Upload de documento + query em uma única chamada.
   "query": "Qual é o conteúdo do documento?"
 }
 ```
+
+**Permissões:**
+
+- Se autenticado: requer permissão `query:create`
+- Sem autenticação: funciona normalmente
 
 **Resposta:**
 
@@ -259,9 +388,20 @@ Upload de documento + query em uma única chamada.
 
 Upload e processa documento (sem query).
 
+**Headers (opcional):**
+
+```
+Authorization: Bearer <token>
+```
+
 **Form Data:**
 
 - `file`: Arquivo (PDF, DOCX, TXT, HTML)
+
+**Permissões:**
+
+- Se autenticado: requer permissão `document:upload`
+- Sem autenticação: funciona normalmente
 
 **Resposta:**
 
@@ -290,6 +430,17 @@ Informações sobre a coleção de documentos indexados.
 ### `DELETE /api/collection`
 
 Limpa manualmente todas as sessões expiradas.
+
+**Headers (opcional):**
+
+```
+Authorization: Bearer <token>
+```
+
+**Permissões:**
+
+- Se autenticado: requer permissão `collection:delete` (admin ou premium)
+- Sem autenticação: funciona normalmente
 
 **Resposta:**
 

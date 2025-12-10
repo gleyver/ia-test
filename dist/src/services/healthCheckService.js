@@ -52,7 +52,9 @@ let HealthCheckService = class HealthCheckService {
             const response = await fetch(`${config.ollama.url}/api/tags`, {
                 signal: AbortSignal.timeout(3000),
             });
-            return response.ok ? { status: "ok" } : { status: "error", message: `HTTP ${response.status}` };
+            return response.ok
+                ? { status: "ok" }
+                : { status: "error", message: `HTTP ${response.status}` };
         }
         catch (error) {
             return {
